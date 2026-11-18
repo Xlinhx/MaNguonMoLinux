@@ -9,11 +9,9 @@ import shutil
 import zipfile
 
 from docx import Document
-from pptx import Presentation
 import pytest
 
 from scripts.release import build_report as report_mod
-from scripts.release import build_slides as slides_mod
 from scripts.release.evidence_validator import (
     REQUIRED_ASSETS,
     ValidationError,
@@ -258,16 +256,14 @@ def test_builders_refuse_corrupt_bundle_and_render_non_pass_check_verdicts_hones
     summary = _sample_valid_summary("0" * 64, int_skipped=1)
     repo = _make_fake_repo(tmp_path, bundle, summary)
 
-    # Monkeypatch module globals in both builders cleanly
-    for mod in (report_mod, slides_mod):
-        monkeypatch.setattr(mod, "ROOT", repo)
-        monkeypatch.setattr(mod, "DELIV", repo / "deliverables")
-        monkeypatch.setattr(mod, "ASSETS", repo / "deliverables" / "assets")
-        monkeypatch.setattr(mod, "EVIDENCE_JSON", repo / "deliverables" / "evidence" / "evidence_bundle.json")
-        monkeypatch.setattr(mod, "TEST_SUMMARY_JSON", repo / "deliverables" / "evidence" / "test_summary.json")
+    # Monkeypatch module globals in report builder cleanly
+    monkeypatch.setattr(report_mod, "ROOT", repo)
+    monkeypatch.setattr(report_mod, "DELIV", repo / "deliverables")
+    monkeypatch.setattr(report_mod, "ASSETS", repo / "deliverables" / "assets")
+    monkeypatch.setattr(report_mod, "EVIDENCE_JSON", repo / "deliverables" / "evidence" / "evidence_bundle.json")
+    monkeypatch.setattr(report_mod, "TEST_SUMMARY_JSON", repo / "deliverables" / "evidence" / "test_summary.json")
 
     docx_path = report_mod.build_report()
-    pptx_path = slides_mod.build_slides()
 
     doc = Document(str(docx_path))
     doc_text = "\n".join(p.text for p in doc.paragraphs)
@@ -280,26 +276,11 @@ def test_builders_refuse_corrupt_bundle_and_render_non_pass_check_verdicts_hones
     assert "Control not verified" in doc_text
     assert "1 skipped" in doc_text
 
-    prs = Presentation(str(pptx_path))
-    slide_text = "\n".join(
-        shape.text for slide in prs.slides for shape in slide.shapes if hasattr(shape, "text")
-    )
-    for slide in prs.slides:
-        for shape in slide.shapes:
-            if shape.has_table:
-                for row in shape.table.rows:
-                    slide_text += "\n" + " | ".join(c.text for c in row.cells)
-    assert "5/6 Tests Passed (1 Skipped)" in slide_text
-    assert "2/3 paired checks Pass" in slide_text
-    assert "Live skipped" in slide_text
-
-    # Corrupt request_count -> both builders MUST refuse cleanly
+    # Corrupt request_count -> builder MUST refuse cleanly
     bundle["run"]["request_count"] = 999
     (repo / "deliverables" / "evidence" / "evidence_bundle.json").write_text(json.dumps(bundle), encoding="utf-8")
     with pytest.raises(ValidationError):
         report_mod.build_report()
-    with pytest.raises(ValidationError):
-        slides_mod.build_slides()
 
 
 def test_r8_rejects_swapped_png_wrong_run_asset_corrupt_bytes_and_stale_junit(
@@ -309,34 +290,27 @@ def test_r8_rejects_swapped_png_wrong_run_asset_corrupt_bytes_and_stale_junit(
     summary = _sample_valid_summary("0" * 64)
     repo = _make_fake_repo(tmp_path, bundle, summary)
 
-    for mod in (report_mod, slides_mod):
-        monkeypatch.setattr(mod, "ROOT", repo)
-        monkeypatch.setattr(mod, "DELIV", repo / "deliverables")
-        monkeypatch.setattr(mod, "ASSETS", repo / "deliverables" / "assets")
-        monkeypatch.setattr(mod, "EVIDENCE_JSON", repo / "deliverables" / "evidence" / "evidence_bundle.json")
-        monkeypatch.setattr(mod, "TEST_SUMMARY_JSON", repo / "deliverables" / "evidence" / "test_summary.json")
+    monkeypatch.setattr(report_mod, "ROOT", repo)
+    monkeypatch.setattr(report_mod, "DELIV", repo / "deliverables")
+    monkeypatch.setattr(report_mod, "ASSETS", repo / "deliverables" / "assets")
+    monkeypatch.setattr(report_mod, "EVIDENCE_JSON", repo / "deliverables" / "evidence" / "evidence_bundle.json")
+    monkeypatch.setattr(report_mod, "TEST_SUMMARY_JSON", repo / "deliverables" / "evidence" / "test_summary.json")
 
-    # Verify embedded media in valid DOCX/PPTX came from verified assets (not stale cropped cache)
-    # Plant a fake stale cropped_live-traffic-verified.png on disk first -> builders must ignore it
+    # Verify embedded media in valid DOCX came from verified assets (not stale cropped cache)
+    # Plant a fake stale cropped_live-traffic-verified.png on disk first -> builder must ignore it
     (repo / "deliverables" / "assets" / "cropped_live-traffic-verified.png").write_bytes(b"NOT_A_REAL_CROP")
     out_docx = report_mod.build_report()
-    out_pptx = slides_mod.build_slides()
     with zipfile.ZipFile(out_docx) as zdoc:
         media_docs = [zdoc.read(n) for n in zdoc.namelist() if n.startswith("word/media/")]
         assert all(m != b"NOT_A_REAL_CROP" for m in media_docs)
-    with zipfile.ZipFile(out_pptx) as zppt:
-        media_ppts = [zppt.read(n) for n in zppt.namelist() if n.startswith("ppt/media/")]
-        assert all(m != b"NOT_A_REAL_CROP" for m in media_ppts)
 
-    # 1. Swap live-traffic-verified.png with valid mcp-sequence.png -> validator AND builders refuse
+    # 1. Swap live-traffic-verified.png with valid mcp-sequence.png -> validator AND builder refuse
     saved_traffic = (repo / "deliverables" / "assets" / "live-traffic-verified.png").read_bytes()
     shutil.copy2(repo / "deliverables" / "assets" / "mcp-sequence.png", repo / "deliverables" / "assets" / "live-traffic-verified.png")
     with pytest.raises(ValidationError, match="hash/size|Duplicate"):
         validate_deliverable_inputs(repo)
     with pytest.raises(ValidationError):
         report_mod.build_report()
-    with pytest.raises(ValidationError):
-        slides_mod.build_slides()
 
     # Restore traffic PNG, corrupt 1 byte -> refuses
     (repo / "deliverables" / "assets" / "live-traffic-verified.png").write_bytes(saved_traffic[:-1] + b"\x00")

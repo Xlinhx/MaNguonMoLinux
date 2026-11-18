@@ -31,7 +31,7 @@
 
 ### Part 3 — Member C (UI Craft, Verification & Error Classification)
 - Demonstrate mobile responsiveness (`360px` / `390px`) including the visible **Access log** summary (`11 requests · Snapshot 2`), shared accessible bottom sheets (`Navigation`, `Switch run`, `Tool call`, `Control evidence`, `Request detail`) with `inert` + Tab focus trapping and `44px+` touch targets, and preserved Agent job tracking when switching tabs.
-- Open **Checks** / slides to explain **Pass vs. Fail vs. Error**:
+- Explain **Pass vs. Fail vs. Error** on **Checks**:
   - **Pass**: Sandbox blocks forbidden write/network AND paired control succeeds (`200` + `{"service":"sandbox-test-service","status":"ok"}`).
   - **Fail**: Sandbox unexpectedly receives an HTTP response (including `503`/`404`/`3xx`) or writes marker while control succeeds.
   - **Error (never Pass/Fail)**: Unavailable control (`/ping` down or returning `204`), worker crash, snapshot SHA-256 mismatch, or timeout (`10s` abort + `docker rm -f` cleanup).

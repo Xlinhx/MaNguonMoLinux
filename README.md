@@ -11,7 +11,7 @@ Sandbox Lab is an end-to-end engineering lab demonstrating how an AI Agent inspe
 - **Nginx & Control Service (`infra/`)**: `nginx:1.27-alpine` on `127.0.0.1:18080` writing JSON lines to `runtime/nginx-logs/access.jsonl`, plus `sandbox-lab-test-service` on `127.0.0.1:18081` (`sandbox_lab_net`) for network isolation controls.
 - **Worker Image (`worker/`)**: `sandbox-lab-worker:v1` (`alpine:3.21` + `python3`, UID/GID `10001:10001`), running strictly typed actions (`count_status_codes`, `top_error_paths`, `recent_http_errors`, and harness checks).
 - **Scripts & Release (`scripts/`, `scripts/release/`)**: Runtime lifecycle (`preflight.sh`, `start.sh`, `stop.sh`, `verify.sh`) and strict deliverable packaging (`build_release.py`, `scripts/release/*`).
-- **Deliverables (`deliverables/`)**: Final `report.docx` / `report.pdf` and `slides.pptx` / `slides.pdf`, verified figures in `deliverables/assets/`, and provenance + raw JUnit XMLs organized under `deliverables/evidence/`.
+- **Deliverables (`deliverables/`)**: Final `report.docx` / `report.pdf`, verified figures in `deliverables/assets/`, and provenance + raw JUnit XMLs organized under `deliverables/evidence/`.
 
 ## 2. Prerequisites & Environment Notes
 

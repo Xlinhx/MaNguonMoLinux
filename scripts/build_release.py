@@ -10,12 +10,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.release.evidence_validator import ValidationError, validate_and_load_deliverables
-from scripts.release import build_report, build_slides
+from scripts.release import build_report
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Build Sandbox Lab deliverables (report.docx, report.pdf, slides.pptx, slides.pdf) after strict provenance gating.",
+        description="Build Sandbox Lab report deliverables (report.docx, report.pdf) after strict provenance gating.",
     )
     parser.add_argument(
         "--draft",
@@ -56,24 +56,19 @@ def main(argv: list[str] | None = None) -> int:
                 f"linux_wsl_receipt.json source_fingerprint ({receipt.get('source_fingerprint')}) != current source ({fp_hex})"
             )
 
-    # 2. Point builders at target root cleanly and render all 4 artifacts.
-    for mod in (build_report, build_slides):
-        mod.ROOT = root
-        mod.DELIV = deliv
-        mod.ASSETS = deliv / "assets"
-        mod.EVIDENCE_JSON = ev_dir / "evidence_bundle.json"
-        mod.TEST_SUMMARY_JSON = ev_dir / "test_summary.json"
+    # 2. Point report builder at target root cleanly and render DOCX + PDF.
+    build_report.ROOT = root
+    build_report.DELIV = deliv
+    build_report.ASSETS = deliv / "assets"
+    build_report.EVIDENCE_JSON = ev_dir / "evidence_bundle.json"
+    build_report.TEST_SUMMARY_JSON = ev_dir / "test_summary.json"
 
     report_docx, report_pdf = build_report.build_report_with_real_toc()
-    slides_pptx = build_slides.build_slides()
-    slides_pdf = build_report._convert_docx_to_pdf(slides_pptx, deliv)
 
     print(
         f"[build_release] Built deliverables cleanly (strict={release_strict}, fp={fp_hex[:12]}...):\n"
         f"  - {report_docx}\n"
-        f"  - {report_pdf}\n"
-        f"  - {slides_pptx}\n"
-        f"  - {slides_pdf}"
+        f"  - {report_pdf}"
     )
     return 0
 
