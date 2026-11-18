@@ -1,8 +1,8 @@
 {
   "provenance": {
-    "source_fingerprint": "0c90544f07f6978852b2b230de30e5be80b1def89c1c266aae518fbaa9f1264c",
-    "manifest_files": 70,
-    "generated_at": "2026-11-18T19:56:03Z",
+    "source_fingerprint": "f6413ea1c28956162187b971122b1e5f031d067a58056a0a80edf96ada29c906",
+    "manifest_files": 71,
+    "generated_at": "2026-11-18T20:09:14Z",
     "provider": "deepseek",
     "model": "deepseek-chat"
   },
@@ -293,12 +293,12 @@
       "skipped": 0,
       "cases": [
         {
-          "classname": "tests.e2e.test_milestone1_traffic",
+          "classname": "tests.e2e.test_traffic_lifecycle",
           "name": "test_visual_fixtures_and_live_traffic_flow",
           "status": "passed"
         },
         {
-          "classname": "tests.e2e.test_milestone3_all_screens",
+          "classname": "tests.e2e.test_ui_screens",
           "name": "test_agent_checks_accesslog_visuals_and_live_checks",
           "status": "passed"
         },

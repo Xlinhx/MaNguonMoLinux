@@ -1,7 +1,7 @@
 {
-  "verified_at_utc": "2026-11-18T19:53:14Z",
-  "source_fingerprint": "0c90544f07f6978852b2b230de30e5be80b1def89c1c266aae518fbaa9f1264c",
-  "source_file_count": 70,
+  "verified_at_utc": "2026-11-18T20:05:32Z",
+  "source_fingerprint": "f6413ea1c28956162187b971122b1e5f031d067a58056a0a80edf96ada29c906",
+  "source_file_count": 71,
   "command": "bash scripts/preflight.sh && mkdir -p $PWD/runtime/.wsl-tmp && docker.exe compose -f infra/compose.yaml up -d && .venv-linux/bin/python -m pytest tests/integration/test_mcp.py -v --basetemp=$PWD/runtime/.wsl-tmp/pytest",
   "host_os": "Ubuntu 24.04.4 LTS",
   "kernel": "6.18.33.2-microsoft-standard-WSL2",
@@ -14,8 +14,8 @@
   "worker_image_id": "sha256:70651b3f212ff2029b8642560b134c1c424da762ce030e0dcafb08f23d783b6e",
   "mount_paths": {
     "repo_linux": "/mnt/p/MaNguonMoLinux",
-    "snapshot_rev1_linux": "/mnt/p/MaNguonMoLinux/runtime/.wsl-receipt-tmp-274/snapshots/2a2e0152-3073-4314-a099-c5adfcc10dbb/rev-0001/access.jsonl",
-    "snapshot_rev2_linux": "/mnt/p/MaNguonMoLinux/runtime/.wsl-receipt-tmp-274/snapshots/2a2e0152-3073-4314-a099-c5adfcc10dbb/rev-0002/access.jsonl",
+    "snapshot_rev1_linux": "/mnt/p/MaNguonMoLinux/runtime/.wsl-receipt-tmp-1226/snapshots/28fc06ce-486e-4537-93de-47b2e72bff4e/rev-0001/access.jsonl",
+    "snapshot_rev2_linux": "/mnt/p/MaNguonMoLinux/runtime/.wsl-receipt-tmp-1226/snapshots/28fc06ce-486e-4537-93de-47b2e72bff4e/rev-0002/access.jsonl",
     "docker_host_path_note": "docker.exe + wslpath -w translates /mnt/p/... cleanly; WSL integration disabled on distro."
   },
   "mcp_tools_verified": [
@@ -24,11 +24,11 @@
     "top_error_paths"
   ],
   "mcp_secret_env_stripped": true,
-  "run_id": "2a2e0152-3073-4314-a099-c5adfcc10dbb",
+  "run_id": "28fc06ce-486e-4537-93de-47b2e72bff4e",
   "revisions": {
     "rev1": {
-      "snapshot_id": "8f24e0cc-bbbb-49d8-be19-70242ef07d37",
-      "sha256": "1b1ace3b25af228d5efd644d8192da60b452544e73e58ba33a046308d265e402",
+      "snapshot_id": "7cfa5023-3dd1-4737-ab1f-dd888d8fea0b",
+      "sha256": "3780642400f326557764d720745fc6baee216febf6efe4a7cf9e4ed77cbfd920",
       "total_requests": 10,
       "ok_count": 7,
       "not_found_count": 3,
@@ -41,8 +41,8 @@
       "recent_errors_count": 3
     },
     "rev2": {
-      "snapshot_id": "510e1868-e989-462e-9a4f-456b708ad93b",
-      "sha256": "31ad2c4b9cf167e26d8db9f0478f7bc3213da51b206c8662eb6a1269e5868bb4",
+      "snapshot_id": "fcf8d6cc-6025-4b83-a97e-a2179847059b",
+      "sha256": "c0c4afbbad94ced1688a5f064e1121e223e2e1a812156c35c00b0e2e921627b6",
       "total_requests": 11,
       "ok_count": 7,
       "not_found_count": 4,
@@ -55,5 +55,5 @@
       "recent_errors_count": 4
     }
   },
-  "historical_capture_note": "deliverables/evidence_bundle.json preserves the historical 2026-11-18 live Run 012 UI/DeepSeek session alongside this live WSL2 Ubuntu MCP + Docker receipt on the final source fingerprint."
+  "historical_capture_note": "deliverables/evidence/evidence_bundle.json preserves the historical 2026-11-18 live Run 012 UI/DeepSeek session alongside this live WSL2 Ubuntu MCP + Docker receipt on the final source fingerprint."
 }

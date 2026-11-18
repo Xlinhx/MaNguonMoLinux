@@ -131,9 +131,9 @@ root = Path.cwd()
 provider = os.getenv("SANDBOX_LAB_LLM_PROVIDER", "auto")
 model = os.getenv("SANDBOX_LAB_MODEL", "default")
 fp = "unavailable"
-if (root / "scripts" / "evidence_validator.py").is_file():
+if (root / "scripts" / "release" / "evidence_validator.py").is_file():
     sys.path.insert(0, str(root))
-    from scripts.evidence_validator import compute_source_fingerprint
+    from scripts.release.evidence_validator import compute_source_fingerprint
     fp, file_count, _ = compute_source_fingerprint(root)
     print(f"[verify] provenance: files={file_count} source_fingerprint={fp}", file=sys.stderr)
 print(f"[verify] llm_config: provider={provider} model={model} api_key_present={os.environ.get('VERIFY_KEY_PRESENT', 'no')}", file=sys.stderr)
@@ -180,7 +180,7 @@ from pathlib import Path
 root = Path(sys.argv[1])
 junit_dir = Path(sys.argv[2])
 sys.path.insert(0, str(root))
-from scripts.evidence_validator import validate_and_load_deliverables
+from scripts.release.evidence_validator import validate_and_load_deliverables
 validate_and_load_deliverables(
     root,
     check_assets=True,
@@ -191,10 +191,10 @@ validate_and_load_deliverables(
 )
 print("[verify] Strict release deliverables validation PASSED.")
 PYEOF
-  if [ "$JUNIT_DIR" != "$ROOT_DIR/deliverables/junit" ]; then
-    mkdir -p "$ROOT_DIR/deliverables/junit"
-    cp "$UNIT_XML" "$INT_XML" "$E2E_XML" "$ROOT_DIR/deliverables/junit/"
-    echo "[verify] Synced verified JUnit XMLs to deliverables/junit/."
+  if [ "$JUNIT_DIR" != "$ROOT_DIR/deliverables/evidence/junit" ]; then
+    mkdir -p "$ROOT_DIR/deliverables/evidence/junit"
+    cp "$UNIT_XML" "$INT_XML" "$E2E_XML" "$ROOT_DIR/deliverables/evidence/junit/"
+    echo "[verify] Synced verified JUnit XMLs to deliverables/evidence/junit/."
   fi
 fi
 

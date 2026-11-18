@@ -12,9 +12,9 @@ from docx import Document
 from pptx import Presentation
 import pytest
 
-from scripts import build_report as report_mod
-from scripts import build_slides as slides_mod
-from scripts.evidence_validator import (
+from scripts.release import build_report as report_mod
+from scripts.release import build_slides as slides_mod
+from scripts.release.evidence_validator import (
     REQUIRED_ASSETS,
     ValidationError,
     compute_source_fingerprint,
@@ -160,8 +160,10 @@ def _sample_valid_summary(source_fp: str, *, int_skipped: int = 0) -> dict:
 
 def _make_fake_repo(tmp_path: Path, bundle: dict, summary: dict) -> Path:
     deliv = tmp_path / "deliverables"
+    ev_dir = deliv / "evidence"
     assets = deliv / "assets"
     assets.mkdir(parents=True)
+    ev_dir.mkdir(parents=True)
     # Copy real valid PNG assets and record exact provenance hashes/run_id/snapshot_id
     asset_manifest: dict[str, dict] = {}
     for name in REQUIRED_ASSETS:
@@ -176,16 +178,16 @@ def _make_fake_repo(tmp_path: Path, bundle: dict, summary: dict) -> Path:
             "snapshot_id": bundle["snapshot"]["id"] if name.startswith("live-") else None,
         }
     bundle.setdefault("provenance", {})["assets"] = asset_manifest
-    (deliv / "evidence_bundle.json").write_text(json.dumps(bundle), encoding="utf-8")
-    (deliv / "test_summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    (ev_dir / "evidence_bundle.json").write_text(json.dumps(bundle), encoding="utf-8")
+    (ev_dir / "test_summary.json").write_text(json.dumps(summary), encoding="utf-8")
     # Put one deterministic tracked file so compute_source_fingerprint is well-defined if needed
     (tmp_path / "backend" / "app").mkdir(parents=True)
     (tmp_path / "backend" / "app" / "__init__.py").write_text("", encoding="utf-8")
     fp, _, _ = compute_source_fingerprint(tmp_path)
     bundle["provenance"]["source_fingerprint"] = fp
     summary["provenance"]["source_fingerprint"] = fp
-    (deliv / "evidence_bundle.json").write_text(json.dumps(bundle), encoding="utf-8")
-    (deliv / "test_summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    (ev_dir / "evidence_bundle.json").write_text(json.dumps(bundle), encoding="utf-8")
+    (ev_dir / "test_summary.json").write_text(json.dumps(summary), encoding="utf-8")
     return tmp_path
 
 
@@ -231,12 +233,12 @@ def test_validator_rejects_secrets_mismatched_totals_stale_fingerprint_and_missi
     # Stale fingerprint
     stale_sum = copy.deepcopy(summary)
     stale_sum["provenance"]["source_fingerprint"] = "f" * 64
-    (repo / "deliverables" / "test_summary.json").write_text(json.dumps(stale_sum), encoding="utf-8")
+    (repo / "deliverables" / "evidence" / "test_summary.json").write_text(json.dumps(stale_sum), encoding="utf-8")
     with pytest.raises(ValidationError, match="source_fingerprint"):
         validate_deliverable_inputs(repo)
 
     # Missing asset
-    (repo / "deliverables" / "test_summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    (repo / "deliverables" / "evidence" / "test_summary.json").write_text(json.dumps(summary), encoding="utf-8")
     (repo / "deliverables" / "assets" / "live-agent-verified.png").unlink()
     with pytest.raises(ValidationError, match="Missing"):
         validate_deliverable_inputs(repo)
@@ -261,8 +263,8 @@ def test_builders_refuse_corrupt_bundle_and_render_non_pass_check_verdicts_hones
         monkeypatch.setattr(mod, "ROOT", repo)
         monkeypatch.setattr(mod, "DELIV", repo / "deliverables")
         monkeypatch.setattr(mod, "ASSETS", repo / "deliverables" / "assets")
-        monkeypatch.setattr(mod, "EVIDENCE_JSON", repo / "deliverables" / "evidence_bundle.json")
-        monkeypatch.setattr(mod, "TEST_SUMMARY_JSON", repo / "deliverables" / "test_summary.json")
+        monkeypatch.setattr(mod, "EVIDENCE_JSON", repo / "deliverables" / "evidence" / "evidence_bundle.json")
+        monkeypatch.setattr(mod, "TEST_SUMMARY_JSON", repo / "deliverables" / "evidence" / "test_summary.json")
 
     docx_path = report_mod.build_report()
     pptx_path = slides_mod.build_slides()
@@ -293,7 +295,7 @@ def test_builders_refuse_corrupt_bundle_and_render_non_pass_check_verdicts_hones
 
     # Corrupt request_count -> both builders MUST refuse cleanly
     bundle["run"]["request_count"] = 999
-    (repo / "deliverables" / "evidence_bundle.json").write_text(json.dumps(bundle), encoding="utf-8")
+    (repo / "deliverables" / "evidence" / "evidence_bundle.json").write_text(json.dumps(bundle), encoding="utf-8")
     with pytest.raises(ValidationError):
         report_mod.build_report()
     with pytest.raises(ValidationError):
@@ -311,8 +313,8 @@ def test_r8_rejects_swapped_png_wrong_run_asset_corrupt_bytes_and_stale_junit(
         monkeypatch.setattr(mod, "ROOT", repo)
         monkeypatch.setattr(mod, "DELIV", repo / "deliverables")
         monkeypatch.setattr(mod, "ASSETS", repo / "deliverables" / "assets")
-        monkeypatch.setattr(mod, "EVIDENCE_JSON", repo / "deliverables" / "evidence_bundle.json")
-        monkeypatch.setattr(mod, "TEST_SUMMARY_JSON", repo / "deliverables" / "test_summary.json")
+        monkeypatch.setattr(mod, "EVIDENCE_JSON", repo / "deliverables" / "evidence" / "evidence_bundle.json")
+        monkeypatch.setattr(mod, "TEST_SUMMARY_JSON", repo / "deliverables" / "evidence" / "test_summary.json")
 
     # Verify embedded media in valid DOCX/PPTX came from verified assets (not stale cropped cache)
     # Plant a fake stale cropped_live-traffic-verified.png on disk first -> builders must ignore it
@@ -345,10 +347,10 @@ def test_r8_rejects_swapped_png_wrong_run_asset_corrupt_bytes_and_stale_junit(
     # 2. Asset provenance bound to different snapshot/run -> refuses
     bad_meta = copy.deepcopy(bundle)
     bad_meta["provenance"]["assets"]["live-checks-verified.png"]["snapshot_id"] = "other-run-snapshot"
-    (repo / "deliverables" / "evidence_bundle.json").write_text(json.dumps(bad_meta), encoding="utf-8")
+    (repo / "deliverables" / "evidence" / "evidence_bundle.json").write_text(json.dumps(bad_meta), encoding="utf-8")
     with pytest.raises(ValidationError, match="does not match bundle"):
         validate_deliverable_inputs(repo)
-    (repo / "deliverables" / "evidence_bundle.json").write_text(json.dumps(bundle), encoding="utf-8")
+    (repo / "deliverables" / "evidence" / "evidence_bundle.json").write_text(json.dumps(bundle), encoding="utf-8")
 
     # 3. Stale runtime/exports/junit_*.xml disagreeing with test_summary.json -> refuses
     exports = repo / "runtime" / "exports"
@@ -364,7 +366,7 @@ def test_release_strict_rejects_skipped_and_missing_tracked_junit(tmp_path: Path
     bundle = _sample_valid_bundle("0" * 64)
     summary_skip = _sample_valid_summary("0" * 64, int_skipped=1)
     repo = _make_fake_repo(tmp_path, bundle, summary_skip)
-    jdir = repo / "deliverables" / "junit"
+    jdir = repo / "deliverables" / "evidence" / "junit"
     jdir.mkdir(parents=True)
     (jdir / "junit_unit.xml").write_text('<testsuite><testcase classname="u" name="t1"/></testsuite>', encoding="utf-8")
     (jdir / "junit_integration.xml").write_text(
@@ -384,10 +386,10 @@ def test_release_strict_rejects_skipped_and_missing_tracked_junit(tmp_path: Path
     with pytest.raises(ValidationError, match="skipped"):
         validate_deliverable_inputs(repo, release_strict=True)
 
-    # Strict release with 0 skips STILL requires deliverables/junit/*.xml
+    # Strict release with 0 skips STILL requires deliverables/evidence/junit/*.xml
     real_fp = compute_source_fingerprint(repo)[0]
     summary_ok = _sample_valid_summary(real_fp, int_skipped=0)
-    (repo / "deliverables" / "test_summary.json").write_text(json.dumps(summary_ok), encoding="utf-8")
+    (repo / "deliverables" / "evidence" / "test_summary.json").write_text(json.dumps(summary_ok), encoding="utf-8")
     shutil.rmtree(jdir)
     with pytest.raises(ValidationError, match="JUnit"):
         validate_deliverable_inputs(repo, release_strict=True)
@@ -405,16 +407,17 @@ def test_build_release_strict_rejects_empty_xml_missing_live_and_swapped_png_wit
     real_fp = compute_source_fingerprint(repo)[0]
 
     # Sync bundle, summary, and linux_wsl_receipt with real repo fingerprint
+    ev_dir = repo / "deliverables" / "evidence"
     bundle["provenance"]["source_fingerprint"] = real_fp
-    (repo / "deliverables" / "evidence_bundle.json").write_text(json.dumps(bundle), encoding="utf-8")
+    (ev_dir / "evidence_bundle.json").write_text(json.dumps(bundle), encoding="utf-8")
     summary["provenance"]["source_fingerprint"] = real_fp
-    (repo / "deliverables" / "test_summary.json").write_text(json.dumps(summary), encoding="utf-8")
-    (repo / "deliverables" / "linux_wsl_receipt.json").write_text(
+    (ev_dir / "test_summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    (ev_dir / "linux_wsl_receipt.json").write_text(
         json.dumps({"source_fingerprint": real_fp, "command": "test"}),
         encoding="utf-8",
     )
 
-    jdir = repo / "deliverables" / "junit"
+    jdir = ev_dir / "junit"
     jdir.mkdir(parents=True)
     # Seed sentinel outputs that MUST remain untouched whenever build_release refuses!
     sentinel_docx = repo / "deliverables" / "report.docx"
@@ -425,7 +428,7 @@ def test_build_release_strict_rejects_empty_xml_missing_live_and_swapped_png_wit
     empty_summary["suites"]["e2e"] = {"tests": 0, "passed": 0, "failed": 0, "errors": 0, "skipped": 0, "cases": []}
     empty_summary["totals"]["tests"] -= 1
     empty_summary["totals"]["passed"] -= 1
-    (repo / "deliverables" / "test_summary.json").write_text(json.dumps(empty_summary), encoding="utf-8")
+    (ev_dir / "test_summary.json").write_text(json.dumps(empty_summary), encoding="utf-8")
     (jdir / "junit_unit.xml").write_text('<testsuite><testcase classname="u" name="t1"/></testsuite>', encoding="utf-8")
     (jdir / "junit_integration.xml").write_text(
         '<testsuite>'
@@ -448,7 +451,7 @@ def test_build_release_strict_rejects_empty_xml_missing_live_and_swapped_png_wit
     no_live_summary["suites"]["integration"]["passed"] = 3
     no_live_summary["totals"]["tests"] = 5
     no_live_summary["totals"]["passed"] = 5
-    (repo / "deliverables" / "test_summary.json").write_text(json.dumps(no_live_summary), encoding="utf-8")
+    (ev_dir / "test_summary.json").write_text(json.dumps(no_live_summary), encoding="utf-8")
     (jdir / "junit_integration.xml").write_text(
         '<testsuite>'
         '<testcase classname="tests.integration.test_nginx_runs" name="test_nginx"/>'
@@ -463,7 +466,7 @@ def test_build_release_strict_rejects_empty_xml_missing_live_and_swapped_png_wit
     assert sentinel_docx.read_bytes() == b"SENTINEL_UNTOUCHED"
 
     # 3. Restore valid summary & XML, swap PNG -> strict gate refuses BEFORE touching report.docx
-    (repo / "deliverables" / "test_summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    (ev_dir / "test_summary.json").write_text(json.dumps(summary), encoding="utf-8")
     (jdir / "junit_integration.xml").write_text(
         '<testsuite>'
         '<testcase classname="tests.integration.test_nginx_runs" name="test_nginx"/>'
@@ -491,8 +494,8 @@ def test_report_two_sections_page1_at_chapter1_and_table_4_1_na(
         monkeypatch.setattr(mod, "ROOT", repo)
         monkeypatch.setattr(mod, "DELIV", repo / "deliverables")
         monkeypatch.setattr(mod, "ASSETS", repo / "deliverables" / "assets")
-        monkeypatch.setattr(mod, "EVIDENCE_JSON", repo / "deliverables" / "evidence_bundle.json")
-        monkeypatch.setattr(mod, "TEST_SUMMARY_JSON", repo / "deliverables" / "test_summary.json")
+        monkeypatch.setattr(mod, "EVIDENCE_JSON", repo / "deliverables" / "evidence" / "evidence_bundle.json")
+        monkeypatch.setattr(mod, "TEST_SUMMARY_JSON", repo / "deliverables" / "evidence" / "test_summary.json")
 
     docx_path = report_mod.build_report()
     doc = Document(str(docx_path))

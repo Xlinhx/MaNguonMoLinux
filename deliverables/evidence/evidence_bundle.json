@@ -409,8 +409,8 @@
     }
   ],
   "provenance": {
-    "source_fingerprint": "0c90544f07f6978852b2b230de30e5be80b1def89c1c266aae518fbaa9f1264c",
-    "manifest_files": 70,
+    "source_fingerprint": "f6413ea1c28956162187b971122b1e5f031d067a58056a0a80edf96ada29c906",
+    "manifest_files": 71,
     "capture_run": "Run 012",
     "live_key_active_in_final_ci": true,
     "assets": {

@@ -10,6 +10,8 @@ Sandbox Lab is an end-to-end engineering lab demonstrating how an AI Agent inspe
 - **Backend & Trusted Runner (`backend/app/`)**: FastAPI + Pydantic + SQLite WAL (`http://127.0.0.1:18000`), immutable log snapshots (`runtime/snapshots/`), MCP server/client (`mcp==1.28.1` over stdio), and sandbox policy runner.
 - **Nginx & Control Service (`infra/`)**: `nginx:1.27-alpine` on `127.0.0.1:18080` writing JSON lines to `runtime/nginx-logs/access.jsonl`, plus `sandbox-lab-test-service` on `127.0.0.1:18081` (`sandbox_lab_net`) for network isolation controls.
 - **Worker Image (`worker/`)**: `sandbox-lab-worker:v1` (`alpine:3.21` + `python3`, UID/GID `10001:10001`), running strictly typed actions (`count_status_codes`, `top_error_paths`, `recent_http_errors`, and harness checks).
+- **Scripts & Release (`scripts/`, `scripts/release/`)**: Runtime lifecycle (`preflight.sh`, `start.sh`, `stop.sh`, `verify.sh`) and strict deliverable packaging (`build_release.py`, `scripts/release/*`).
+- **Deliverables (`deliverables/`)**: Final `report.docx` / `report.pdf` and `slides.pptx` / `slides.pdf`, verified figures in `deliverables/assets/`, and provenance + raw JUnit XMLs organized under `deliverables/evidence/`.
 
 ## 2. Prerequisites & Environment Notes
 
@@ -66,7 +68,7 @@ cd .\web ; npm run typecheck ; npm run build
 
 Or run the unified verification script in WSL2/Bash:
 ```bash
-# Development / local run (writes JUnit XMLs to runtime/exports/, never clobbers deliverables/junit/, reports PARTIAL COVERAGE if skipped)
+# Development / local run (writes JUnit XMLs to runtime/exports/, never clobbers deliverables/evidence/junit/, reports PARTIAL COVERAGE if skipped)
 bash scripts/verify.sh
 
 # Isolated clean WSL2 /mnt/<drive> test sequence when Docker Desktop WSL Integration socket is absent (docker.exe mode):
@@ -76,14 +78,14 @@ bash scripts/verify.sh
 #   4. mkdir -p "$PWD/runtime/.wsl-tmp" && docker.exe compose -f infra/compose.yaml up -d
 #   5. .venv-linux/bin/python -m pytest tests/integration/test_mcp.py -v --basetemp="$PWD/runtime/.wsl-tmp/pytest"
 
-# Strict release verification (requires E2E=1, FRONTEND=1, live LLM key, 0 skipped, then syncs deliverables/junit/)
+# Strict release verification (requires E2E=1, FRONTEND=1, live LLM key, 0 skipped, then syncs deliverables/evidence/junit/)
 SANDBOX_LAB_RELEASE_STRICT=1 DEEPSEEK_API_KEY="<your-key>" bash scripts/verify.sh
 
-# Offline release build (requires tracked deliverables/junit/*.xml, deliverables/linux_wsl_receipt.json & evidence_bundle.json to match source fingerprint)
+# Offline release build (requires tracked deliverables/evidence/{junit/*.xml,linux_wsl_receipt.json,evidence_bundle.json,test_summary.json} to match source fingerprint)
 python scripts/build_release.py
 ```
 
-Note on provenance: `deliverables/evidence_bundle.json` and the Web UI screenshots (`Run 012`) preserve an audited live runtime capture alongside the verified Linux WSL2 MCP receipt (`deliverables/linux_wsl_receipt.json`) and tracked raw JUnit test results (`deliverables/junit/junit_{unit,integration,e2e}.xml`). Export any live session bundle via:
+Note on provenance: `deliverables/evidence/evidence_bundle.json` and the Web UI screenshots (`Run 012`) preserve an audited live runtime capture alongside the verified Linux WSL2 MCP receipt (`deliverables/evidence/linux_wsl_receipt.json`) and tracked raw JUnit test results (`deliverables/evidence/junit/junit_{unit,integration,e2e}.xml`). Export any live session bundle via:
 `GET http://127.0.0.1:18000/api/runs/{run_id}/export`
 
 ## 5. Stop Lab Services

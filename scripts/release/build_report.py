@@ -12,17 +12,18 @@ from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import nsdecls, qn
 from docx.shared import Cm, Pt, RGBColor
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 DELIV = ROOT / "deliverables"
 ASSETS = DELIV / "assets"
-EVIDENCE_JSON = DELIV / "evidence_bundle.json"
-TEST_SUMMARY_JSON = DELIV / "test_summary.json"
+EVIDENCE_DIR = DELIV / "evidence"
+EVIDENCE_JSON = EVIDENCE_DIR / "evidence_bundle.json"
+TEST_SUMMARY_JSON = EVIDENCE_DIR / "test_summary.json"
 REQ_TXT = ROOT / "backend" / "requirements.txt"
 PKG_LOCK = ROOT / "web" / "package-lock.json"
 
 
 try:
-    from scripts.evidence_validator import prepare_verified_image_stream, validate_and_load_deliverables
+    from scripts.release.evidence_validator import prepare_verified_image_stream, validate_and_load_deliverables
 except ImportError:
     from evidence_validator import prepare_verified_image_stream, validate_and_load_deliverables
 
@@ -508,15 +509,15 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
     doc.add_heading("4.1. Test Environment and Exported Session Evidence", level=2)
     _body(
         doc,
-        f"Post-remediation verification ran on November 19, 2026 on {env_info.get('os', 'Windows 11')} (Docker Desktop Engine 29.7.2, Compose v5.4.0, desktop-linux context), Python {env_info.get('python', '3.12.10')}, Node v24.19.0, and clean Ubuntu 24.04.4 LTS WSL2 onboarding (Python 3.12.3 isolated venv, Linux @rollup/rollup-x64-gnu Vite build, and Linux MCP stdio receipt in deliverables/linux_wsl_receipt.json) [4]. "
-        f"The audited historical session export (deliverables/evidence_bundle.json, captured 2026-11-18 on {run_label}, Snapshot ID: {snap_id}, SHA-256: {snap_sha}...) confirms {checks_outcome_phrase} on Revision {snap_rev} (plus {max(0, len(check_history) - len(checks))} prior checks in check_history = {len(check_history)} total check records) and completed live DeepSeek (deepseek-flash) MCP Q&A across Revision 1 ('{rev1_txt}') and Revision 2 ('{rev2_txt}'), illustrated in Figure 4.1.",
+        f"Post-remediation verification ran on November 19, 2026 on {env_info.get('os', 'Windows 11')} (Docker Desktop Engine 29.7.2, Compose v5.4.0, desktop-linux context), Python {env_info.get('python', '3.12.10')}, Node v24.19.0, and clean Ubuntu 24.04.4 LTS WSL2 onboarding (Python 3.12.3 isolated venv, Linux @rollup/rollup-x64-gnu Vite build, and Linux MCP stdio receipt in deliverables/evidence/linux_wsl_receipt.json) [4]. "
+        f"The audited historical session export (deliverables/evidence/evidence_bundle.json, captured 2026-11-18 on {run_label}, Snapshot ID: {snap_id}, SHA-256: {snap_sha}...) confirms {checks_outcome_phrase} on Revision {snap_rev} (plus {max(0, len(check_history) - len(checks))} prior checks in check_history = {len(check_history)} total check records) and completed live DeepSeek (deepseek-flash) MCP Q&A across Revision 1 ('{rev1_txt}') and Revision 2 ('{rev2_txt}'), illustrated in Figure 4.1.",
     )
     _add_figure(doc, ASSETS / "live-agent-verified.png", f"Figure 4.1: [Live Runtime] Agent Q&A with DeepSeek + MCP Tool Inspector ({run_label}: Rev 1 -> Rev 2)", width_cm=14.8, crop_bottom_ratio=0.84, verified_assets=verified_assets, bundle=export_data)
 
     doc.add_heading("4.2. Control-Paired Sandbox Isolation Results", level=2)
     _body(
         doc,
-        "Table 4.1 summarizes observed outcomes from the live Checks ledger (deliverables/evidence_bundle.json) and real Docker integration suite (tests/integration/test_sandbox.py).",
+        "Table 4.1 summarizes observed outcomes from the live Checks ledger (deliverables/evidence/evidence_bundle.json) and real Docker integration suite (tests/integration/test_sandbox.py).",
     )
     read_chk = next(c for c in checks if c["name"] == "read_log")
     write_chk = next(c for c in checks if c["name"] == "write_log")
@@ -600,7 +601,7 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
         "[4] Docker Inc., 'Docker Desktop WSL 2 Backend', Docker Documentation. https://docs.docker.com/desktop/features/wsl/",
         "[5] Anthropic / Model Context Protocol, 'MCP Architecture Overview', 2025. https://modelcontextprotocol.io/docs/learn/architecture",
         "[6] Nginx Inc., 'Module ngx_http_log_module', Nginx Documentation. https://nginx.org/en/docs/http/ngx_http_log_module.html",
-        "[7] VKU Academic Affairs, 'Project Report Templates (KHMT)', daotao.vku.udn.vn/bieu-mau (reference copies in docs/references/vku/).",
+        "[7] VKU Academic Affairs, 'Project Report Templates (KHMT)', https://daotao.vku.udn.vn/bieu-mau.",
     ]
     for r in refs:
         _body(doc, r)

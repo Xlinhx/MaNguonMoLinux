@@ -11,11 +11,12 @@ from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.util import Inches, Pt
 from PIL import Image
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 DELIV = ROOT / "deliverables"
 ASSETS = DELIV / "assets"
-EVIDENCE_JSON = DELIV / "evidence_bundle.json"
-TEST_SUMMARY_JSON = DELIV / "test_summary.json"
+EVIDENCE_DIR = DELIV / "evidence"
+EVIDENCE_JSON = EVIDENCE_DIR / "evidence_bundle.json"
+TEST_SUMMARY_JSON = EVIDENCE_DIR / "test_summary.json"
 
 INK = RGBColor(0x14, 0x28, 0x3B)
 MUTED = RGBColor(0x40, 0x56, 0x6B)
@@ -30,7 +31,7 @@ WARN_INK = RGBColor(0x92, 0x40, 0x0E)
 
 
 try:
-    from scripts.evidence_validator import prepare_verified_image_stream, validate_and_load_deliverables
+    from scripts.release.evidence_validator import prepare_verified_image_stream, validate_and_load_deliverables
 except ImportError:
     from evidence_validator import prepare_verified_image_stream, validate_and_load_deliverables
 
@@ -211,7 +212,7 @@ def build_slides() -> Path:
     top_band.fill.fore_color.rgb = ACCENT
     top_band.line.fill.background()
 
-    badge = s1.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.8), Inches(1.15), Inches(4.5), Inches(0.45))
+    badge = s1.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.8), Inches(0.85), Inches(4.5), Inches(0.45))
     badge.adjustments[0] = 0.25
     badge.fill.solid()
     badge.fill.fore_color.rgb = SURFACE
@@ -225,7 +226,7 @@ def build_slides() -> Path:
     br.font.bold = True
     br.font.color.rgb = ACCENT
 
-    tb1 = s1.shapes.add_textbox(Inches(0.8), Inches(1.85), Inches(11.6), Inches(2.5))
+    tb1 = s1.shapes.add_textbox(Inches(0.8), Inches(1.50), Inches(11.7), Inches(2.2))
     tf1 = tb1.text_frame
     tf1.word_wrap = True
     p_t = tf1.paragraphs[0]
@@ -237,7 +238,7 @@ def build_slides() -> Path:
     rt.font.color.rgb = INK
 
     p_sub = tf1.add_paragraph()
-    p_sub.space_before = Pt(8)
+    p_sub.space_before = Pt(6)
     rs = p_sub.add_run()
     rs.text = "Secure Agentic AI Tool Execution using Linux Sandbox"
     rs.font.name = "Segoe UI"
@@ -246,19 +247,39 @@ def build_slides() -> Path:
     rs.font.color.rgb = ACCENT
 
     p_desc = tf1.add_paragraph()
-    p_desc.space_before = Pt(16)
+    p_desc.space_before = Pt(12)
     rd = p_desc.add_run()
     rd.text = "Isolating MCP log-analysis tools inside ephemeral, non-root, read-only, network-disabled Linux containers with paired behavioral controls."
     rd.font.name = "Segoe UI"
     rd.font.size = Pt(15)
     rd.font.color.rgb = MUTED
 
+    # Three architecture summary pills filling the mid canvas evenly
     _add_card(
-        s1, 0.8, 4.95, 11.7, 1.65,
-        "Project Team & Verified Stack",
+        s1, 0.8, 3.82, 3.7, 1.05,
+        "Linux Container Policy",
+        ["UID 10001 · --read-only · --network none · 128m RAM"],
+        fill=WHITE, border=BORDER, title_color=ACCENT,
+    )
+    _add_card(
+        s1, 4.8, 3.82, 3.7, 1.05,
+        "MCP Stdio & Snapshots",
+        ["3 read-only tools pinned by immutable SHA-256"],
+        fill=WHITE, border=BORDER, title_color=ACCENT,
+    )
+    _add_card(
+        s1, 8.8, 3.82, 3.7, 1.05,
+        "Verified Release Gate",
+        [f"{total_passed}/{total_tests} tests passed{skip_suffix} + WSL2 Linux receipt"],
+        fill=PASS_BG, border=RGBColor(0x86, 0xEF, 0xAC), title_color=PASS_INK,
+    )
+
+    _add_card(
+        s1, 0.8, 5.15, 11.7, 1.55,
+        "Project Team & Verified Runtime Stack",
         [
-            "Group of 3 Students (Members A, B, C) · Faculty of Computer Science, VKU · Da Nang, November 2026",
-            f"Stack: Docker Desktop Linux Engine · Ubuntu 24.04 WSL2 · Nginx 1.27 · FastAPI + MCP 1.28.1 · React 19 · {total_passed}/{total_tests} Tests Passed{skip_suffix}",
+            "Group of 3 Students (Members A, B, C — fill names/class before defense) · VKU · Da Nang, November 2026",
+            "Stack: Docker Desktop Linux Engine (29.7.2) · Ubuntu 24.04.4 WSL2 · Nginx 1.27 · FastAPI + MCP 1.28.1 · React 19",
         ],
         fill=SURFACE, border=BORDER, title_color=INK,
     )
@@ -267,7 +288,7 @@ def build_slides() -> Path:
     s2 = prs.slides.add_slide(blank)
     _add_header(s2, "Why MCP Alone Is Not Enough", "Protocols structure tool calls, while Linux isolation must enforce execution boundaries.", 2)
     _add_card(
-        s2, 0.65, 1.65, 5.8, 2.45,
+        s2, 0.65, 1.60, 5.8, 2.75,
         "1. Risks of Direct Tool Execution",
         [
             "• Untrusted log lines (e.g., crafted HTTP paths) can carry shell metacharacters.",
@@ -276,7 +297,7 @@ def build_slides() -> Path:
         ],
     )
     _add_card(
-        s2, 6.85, 1.65, 5.8, 2.45,
+        s2, 6.85, 1.60, 5.8, 2.75,
         "2. MCP vs. Sandbox Boundary",
         [
             "• Model Context Protocol (MCP) standardizes tool discovery and JSON schemas.",
@@ -285,11 +306,20 @@ def build_slides() -> Path:
         ],
     )
     _add_card(
-        s2, 0.65, 4.40, 12.0, 2.25,
-        "3. Enforcement & Evidence Guarantees",
+        s2, 0.65, 4.60, 5.8, 2.10,
+        "3. Agent & Snapshot Guarantees",
         [
-            "• Every AI answer requires at least one verified MCP tool call matching (run_id, snapshot_id) under a 30s deadline.",
-            "• Paired positive/negative controls empirically verify policy enforcement and classify faults honestly as Error.",
+            "• Mandatory MCP tool call matching (run_id, snapshot_id, revision, sha256) under 30s.",
+            "• Quantitative number guard rejects inverted LLM prose (e.g. '10 out of 3').",
+        ],
+        fill=WHITE, border=ACCENT, title_color=ACCENT,
+    )
+    _add_card(
+        s2, 6.85, 4.60, 5.8, 2.10,
+        "4. Paired Control Guarantees",
+        [
+            "• Pass requires sandbox blocked AND relaxed control succeeded cleanly.",
+            "• Missing control, crash, or abnormal exit (137) -> Error (never Pass).",
         ],
         fill=WHITE, border=ACCENT, title_color=ACCENT,
     )
@@ -347,15 +377,24 @@ def build_slides() -> Path:
         5.2,
     )
     _add_card(
-        s5, 8.95, 1.55, 3.75, 5.15,
+        s5, 8.95, 1.55, 3.75, 3.05,
         "3 Permitted MCP Tools",
         [
-            "1. count_status_codes(run_id)\nReturns total_requests, status_200, status_404, sha256.",
-            "2. top_error_paths(run_id, limit=1..20)\nRanks paths with HTTP >= 400.",
-            "3. recent_http_errors(run_id, limit=1..50)\nReturns newest HTTP error entries.",
-            "Agent & MCP Guardrails:\n• Server-pinned snapshot_id & rev\n• Mandatory MCP call gate\n• Max 4 calls / 30s task deadline",
+            "1. count_status_codes(run_id) — total, 200, 404, sha256.",
+            "2. top_error_paths(run_id, limit=1..20) — HTTP >= 400 paths.",
+            "3. recent_http_errors(run_id, limit=1..50) — latest errors.",
         ],
         fill=SURFACE, border=BORDER, title_color=INK,
+    )
+    _add_card(
+        s5, 8.95, 4.78, 3.75, 1.92,
+        "Agent & MCP Guardrails",
+        [
+            "• Server-pinned snapshot_id & revision",
+            "• Mandatory count/MCP gate + 4 calls / 30s cap",
+            "• Strips all LLM API keys before stdio spawn",
+        ],
+        fill=WHITE, border=ACCENT, title_color=ACCENT,
     )
 
     # Slide 6: Real Nginx Traffic Demo
@@ -370,15 +409,23 @@ def build_slides() -> Path:
         5.15,
     )
     _add_card(
-        s6, 8.95, 1.55, 3.75, 5.15,
+        s6, 8.95, 1.55, 3.75, 3.20,
         "Verified Run Lifecycle",
         [
-            "• Create run sends 7x GET /demo (200) and 3x GET /missing (404) with unique X-Sandbox-Request-Id headers.",
+            "• Create run dispatches 7x /demo (200) & 3x /missing (404) with unique request IDs.",
             f"• Add 404 advances {run_label} to Revision {snap_rev} ({req_count}/{ok_count}/{nf_count}).",
-            "• Pre-send Nginx 503 preserves rev1 snapshot; Retry reuses exact same Idempotency-Key.",
-            "• Closed snapshots resist raw Nginx log rotation.",
+            "• Pre-send 503 preserves rev1 snapshot; Retry reuses Idempotency-Key.",
         ],
         fill=SURFACE, border=BORDER, title_color=INK,
+    )
+    _add_card(
+        s6, 8.95, 4.92, 3.75, 1.78,
+        "Historical & Crash Safety",
+        [
+            "• Historical (!is_current) runs emit 0 HTTP requests.",
+            "• Legacy DBs use legacy_unknown (0 dupes) + atomic snapshot recovery.",
+        ],
+        fill=WHITE, border=ACCENT, title_color=ACCENT,
     )
 
     # Slide 7: Control-Paired Verification Philosophy
@@ -443,15 +490,23 @@ def build_slides() -> Path:
         5.15,
     )
     _add_card(
-        s8, 9.20, 1.55, 3.5, 4.95,
-        "Additional Verified Tests",
+        s8, 9.20, 1.55, 3.5, 3.25,
+        "Worker-Only Probes (N/A in App)",
         [
-            "• Outside Mount: Parameterized host marker -> found=false.",
+            "• Outside Mount: --path host marker -> found=false.",
             "• Timeout Cleanup: 15s sleep aborted; ps -a empty.",
-            "• OOM Kill: build_docker_run_argv -> OOMKilled=True (137).",
-            "• Export Audit: current rev2 Checks + rev1 history preserved.",
+            "• OOM Kill: 200 MiB in 128m -> OOMKilled=True (137).",
         ],
         fill=SURFACE, border=BORDER, title_color=INK,
+    )
+    _add_card(
+        s8, 9.20, 4.95, 3.5, 1.75,
+        "Honest Fault Verdicts",
+        [
+            "• Exit 137 on network probe -> Error (WORKER_EXIT_ABNORMAL).",
+            "• Control HTTP 204 / crash -> Error; 404/503 -> Fail.",
+        ],
+        fill=WHITE, border=ACCENT, title_color=ACCENT,
     )
 
     # Slide 9: Live DeepSeek Agent Q&A & Scale
@@ -466,15 +521,23 @@ def build_slides() -> Path:
         5.15,
     )
     _add_card(
-        s9, 9.00, 1.55, 3.7, 5.05,
+        s9, 9.00, 1.55, 3.7, 3.15,
         "Live Agent & UI Craft",
         [
             "• Rev 1 answered 3 of 10; Rev 2 answered 4 of 11 via MCP stdio.",
-            "• 100 runs & 10,000-row cursor-paginated logs; mocked run detail < 2,048 bytes (?include_requests=false).",
-            "• Fixture mode makes 0 backend writes.",
-            "• Read errors retry via GET (0 POST); preserved job & #01 state.",
+            "• 100 runs & 10,000-row logs; mocked run detail < 2,048 B.",
+            "• Fixture mode makes 0 backend writes; GET-only read retries.",
         ],
         fill=SURFACE, border=BORDER, title_color=INK,
+    )
+    _add_card(
+        s9, 9.00, 4.88, 3.7, 1.82,
+        "Quantitative Number Guard",
+        [
+            "• Rejects inverted counts ('10 out of 3' / '10 of the 3').",
+            "• Enforces count_status_codes + Tool counts UI badge.",
+        ],
+        fill=WHITE, border=ACCENT, title_color=ACCENT,
     )
 
     # Slide 10: Verification & Honest Limits
@@ -495,7 +558,7 @@ def build_slides() -> Path:
     _add_header(
         s10,
         f"Verification Summary ({total_passed}/{total_tests} Tests Passed{skip_suffix})",
-        f"Results bound to test_summary.json & evidence_bundle.json · src sha256 {source_fp[:12]}...",
+        f"Provenance: deliverables/evidence/test_summary.json & linux_wsl_receipt.json · src {source_fp[:12]}...",
         10,
     )
     _add_table(
@@ -527,18 +590,19 @@ def build_slides() -> Path:
         s11, 0.65, 1.65, 12.03, 3.2,
         ["Team Member", "Core Ownership", "Key Artifacts"],
         [
-            ["Member A", "Linux, Nginx, Worker Image & Policy", "infra/*, worker/*, backend/app/sandbox.py, checks.py, scripts/*"],
+            ["Member A", "Linux, Nginx, Worker Image & Policy", "infra/*, worker/*, backend/app/sandbox.py, checks.py, scripts/*.sh"],
             ["Member B", "MCP Server/Client, Agent Loop & Storage", "backend/app/mcp_server.py, mcp_client.py, agent.py, store.py, snapshots.py, traffic.py, api.py"],
-            ["Member C", "Web Operator UI, Playwright E2E & Docs", "web/src/*, tests/e2e/*, README.md, docs/architecture.md, docs/demo.md, report & slides"],
+            ["Member C", "Web Operator UI, Playwright E2E & Release", "web/src/*, tests/e2e/*, README.md, docs/*, scripts/build_release.py, scripts/release/*"],
         ],
         [2.3, 4.2, 5.53],
     )
     _add_card(
-        s11, 0.65, 5.15, 12.03, 1.55,
-        "Reproducible Quick Start & Thank You",
+        s11, 0.65, 5.05, 12.03, 1.65,
+        "3-Student Live Defense Sequence & Offline Release Build",
         [
-            "bash scripts/preflight.sh -> docker build worker -> docker compose up -> uvicorn + Vite -> bash scripts/verify.sh -> bash scripts/stop.sh",
-            "Thank you for listening! Questions & live demonstration.",
+            "1. Member A: Create run (Nginx 7/3) -> Checks Pass/Fail/Error controls -> raw access.jsonl & worker inspect",
+            "2. Member B: Live Agent (count_status_codes -> Ask again Rev 2) OR Offline deterministic MCP + WSL2 receipt",
+            "3. Member C: Mobile UI (390px) -> 10k paginated logs -> python scripts/build_release.py (strict offline gate) -> Thank you!",
         ],
         fill=SURFACE, border=ACCENT, title_color=ACCENT,
     )

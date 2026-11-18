@@ -461,8 +461,8 @@ def validate_and_load_deliverables(
     junit_dir: Path | None = None,
     release_strict: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any], str, dict[str, bytes]]:
-    ev_path = evidence_path or (root / "deliverables" / "evidence_bundle.json")
-    ts_path = summary_path or (root / "deliverables" / "test_summary.json")
+    ev_path = evidence_path or (root / "deliverables" / "evidence" / "evidence_bundle.json")
+    ts_path = summary_path or (root / "deliverables" / "evidence" / "test_summary.json")
     if not ev_path.is_file():
         raise ValidationError(f"Missing evidence bundle: {ev_path}")
     if not ts_path.is_file():
@@ -492,8 +492,8 @@ def validate_and_load_deliverables(
 
     if junit_dir is not None:
         effective_junit_dir = junit_dir
-    elif (root / "deliverables" / "junit").is_dir() or release_strict:
-        effective_junit_dir = root / "deliverables" / "junit"
+    elif (root / "deliverables" / "evidence" / "junit").is_dir() or release_strict:
+        effective_junit_dir = root / "deliverables" / "evidence" / "junit"
     else:
         effective_junit_dir = root / "runtime" / "exports"
 

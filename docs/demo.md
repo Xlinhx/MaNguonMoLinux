@@ -4,7 +4,7 @@
 1. Ensure Docker Desktop (`desktop-linux` context) is running (`docker info` succeeds) and `sandbox-lab-worker:v1` is built.
 2. Start lab services (`infra/compose.yaml`, FastAPI on `:18000`, Web UI on `:5173`) — in WSL2 use `bash scripts/start.sh` (or Windows PowerShell uvicorn + Vite).
 3. Verify `http://127.0.0.1:5173` loads cleanly (or `?fixture=mockup` for non-mutating visual preview).
-4. Keep one backup terminal ready to inspect `runtime/nginx-logs/access.jsonl`, `GET /api/runs/{id}/export`, and `deliverables/linux_wsl_receipt.json`.
+4. Keep one backup terminal ready to inspect `runtime/nginx-logs/access.jsonl`, `GET /api/runs/{id}/export`, and `deliverables/evidence/linux_wsl_receipt.json`.
 5. **Architecture boundary summary to explain during defense**:
    - **Host Python boundary**: FastAPI runs `AgentService` and spawns `backend.app.mcp_server` over MCP `stdio` via `McpLabClient` (**explicitly stripping** `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, and `OPENROUTER_API_KEY` before launching the MCP server).
    - **Trusted runner -> Linux container**: `mcp_server.py` calls `sandbox.execute_tool(...)`, which verifies snapshot SHA-256 on disk, then launches an ephemeral `sandbox-lab-worker:v1` Linux container inside Docker Desktop's `desktop-linux` VM (controlled via Docker CLI / daemon) with `--user 10001:10001`, `--read-only`, `--network none`, `--cap-drop ALL`, `--pids-limit 64`, `--memory 128m --memory-swap 128m`, `--cpus 0.5`, and single-snapshot `--mount ...,readonly`.
@@ -27,7 +27,7 @@
   - Return to **Agent**: show the amber banner on the previous Revision 1 answer (`Answer uses revision 1 · Run now has 11 requests`) and click **Ask again** -> new answer returns `4 of 11` on **Revision 2**.
 - **No-Key / Offline Branch (no LLM API key in backend environment)**:
   - Submitting a question in **Agent** cleanly reports `Model unavailable` (`Traffic and Checks are available.`); do **not** run **Ask again** in offline mode.
-  - Prove the exact same real MCP stdio + Docker worker execution deterministically across revisions via `python -m pytest tests/integration/test_mcp.py -v`, inspect the verified WSL2 receipt (`deliverables/linux_wsl_receipt.json`), and cite historical `Run 012` artifacts (`deliverables/evidence_bundle.json`, captured `2026-11-18`) honestly as pre-recorded audited captures alongside final verification.
+  - Prove the exact same real MCP stdio + Docker worker execution deterministically across revisions via `python -m pytest tests/integration/test_mcp.py -v`, inspect the verified WSL2 receipt (`deliverables/evidence/linux_wsl_receipt.json`), and cite historical `Run 012` artifacts (`deliverables/evidence/evidence_bundle.json`, captured `2026-11-18`) honestly as pre-recorded audited captures alongside final verification.
 
 ### Part 3 — Member C (UI Craft, Verification & Error Classification)
 - Demonstrate mobile responsiveness (`360px` / `390px`) including the visible **Access log** summary (`11 requests · Snapshot 2`), shared accessible bottom sheets (`Navigation`, `Switch run`, `Tool call`, `Control evidence`, `Request detail`) with `inert` + Tab focus trapping and `44px+` touch targets, and preserved Agent job tracking when switching tabs.

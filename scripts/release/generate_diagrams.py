@@ -4,7 +4,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
 
-OUT_DIR = Path(__file__).resolve().parents[1] / "deliverables" / "assets"
+OUT_DIR = Path(__file__).resolve().parents[2] / "deliverables" / "assets"
 
 
 def _box(
