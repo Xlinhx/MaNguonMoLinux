@@ -1,0 +1,59 @@
+{
+  "verified_at_utc": "2026-11-18T19:53:14Z",
+  "source_fingerprint": "0c90544f07f6978852b2b230de30e5be80b1def89c1c266aae518fbaa9f1264c",
+  "source_file_count": 70,
+  "command": "bash scripts/preflight.sh && mkdir -p $PWD/runtime/.wsl-tmp && docker.exe compose -f infra/compose.yaml up -d && .venv-linux/bin/python -m pytest tests/integration/test_mcp.py -v --basetemp=$PWD/runtime/.wsl-tmp/pytest",
+  "host_os": "Ubuntu 24.04.4 LTS",
+  "kernel": "6.18.33.2-microsoft-standard-WSL2",
+  "python": "3.12.3",
+  "node_rollup_linux_verified": true,
+  "docker_cli": "docker.exe",
+  "docker_socket_present_in_wsl": false,
+  "docker_engine": "29.7.2",
+  "worker_image": "sandbox-lab-worker:v1",
+  "worker_image_id": "sha256:70651b3f212ff2029b8642560b134c1c424da762ce030e0dcafb08f23d783b6e",
+  "mount_paths": {
+    "repo_linux": "/mnt/p/MaNguonMoLinux",
+    "snapshot_rev1_linux": "/mnt/p/MaNguonMoLinux/runtime/.wsl-receipt-tmp-274/snapshots/2a2e0152-3073-4314-a099-c5adfcc10dbb/rev-0001/access.jsonl",
+    "snapshot_rev2_linux": "/mnt/p/MaNguonMoLinux/runtime/.wsl-receipt-tmp-274/snapshots/2a2e0152-3073-4314-a099-c5adfcc10dbb/rev-0002/access.jsonl",
+    "docker_host_path_note": "docker.exe + wslpath -w translates /mnt/p/... cleanly; WSL integration disabled on distro."
+  },
+  "mcp_tools_verified": [
+    "count_status_codes",
+    "recent_http_errors",
+    "top_error_paths"
+  ],
+  "mcp_secret_env_stripped": true,
+  "run_id": "2a2e0152-3073-4314-a099-c5adfcc10dbb",
+  "revisions": {
+    "rev1": {
+      "snapshot_id": "8f24e0cc-bbbb-49d8-be19-70242ef07d37",
+      "sha256": "1b1ace3b25af228d5efd644d8192da60b452544e73e58ba33a046308d265e402",
+      "total_requests": 10,
+      "ok_count": 7,
+      "not_found_count": 3,
+      "top_error_paths": [
+        {
+          "path": "/missing",
+          "count": 3
+        }
+      ],
+      "recent_errors_count": 3
+    },
+    "rev2": {
+      "snapshot_id": "510e1868-e989-462e-9a4f-456b708ad93b",
+      "sha256": "31ad2c4b9cf167e26d8db9f0478f7bc3213da51b206c8662eb6a1269e5868bb4",
+      "total_requests": 11,
+      "ok_count": 7,
+      "not_found_count": 4,
+      "top_error_paths": [
+        {
+          "path": "/missing",
+          "count": 4
+        }
+      ],
+      "recent_errors_count": 4
+    }
+  },
+  "historical_capture_note": "deliverables/evidence_bundle.json preserves the historical 2026-11-18 live Run 012 UI/DeepSeek session alongside this live WSL2 Ubuntu MCP + Docker receipt on the final source fingerprint."
+}

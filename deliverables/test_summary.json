@@ -1,0 +1,355 @@
+{
+  "provenance": {
+    "source_fingerprint": "0c90544f07f6978852b2b230de30e5be80b1def89c1c266aae518fbaa9f1264c",
+    "manifest_files": 70,
+    "generated_at": "2026-11-18T19:56:03Z",
+    "provider": "deepseek",
+    "model": "deepseek-chat"
+  },
+  "suites": {
+    "unit": {
+      "tests": 48,
+      "passed": 48,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "cases": [
+        {
+          "classname": "tests.unit.test_agent_and_mcp_regressions",
+          "name": "test_agent_rejects_direct_answer_without_mcp_tool_call",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_agent_and_mcp_regressions",
+          "name": "test_agent_enforces_deadline_when_model_or_mcp_exceeds_budget",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_agent_and_mcp_regressions",
+          "name": "test_cancel_job_waits_for_cleanup_and_reports_cleanup_failure",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_agent_and_mcp_regressions",
+          "name": "test_deepseek_provider_selection_no_silent_fallback_and_tool_protocol",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_agent_and_mcp_regressions",
+          "name": "test_agent_prevents_inverted_numbers_and_enforces_count_tool",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_checks_and_sandbox_regressions",
+          "name": "test_write_log_check_uses_isolated_copies_and_protects_source_snapshot",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_checks_and_sandbox_regressions",
+          "name": "test_read_log_timeout_classifies_as_error_with_honest_summary",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_checks_and_sandbox_regressions",
+          "name": "test_sandbox_pipe_cap_and_cleanup_error_do_not_raise",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_checks_and_sandbox_regressions",
+          "name": "test_checks_pinned_per_snapshot_and_export_preserves_history",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_deliverables_validator",
+          "name": "test_validator_rejects_corrupted_evidence_invariants[<lambda>0]",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_deliverables_validator",
+          "name": "test_validator_rejects_corrupted_evidence_invariants[<lambda>1]",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_deliverables_validator",
+          "name": "test_validator_rejects_corrupted_evidence_invariants[<lambda>2]",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_deliverables_validator",
+          "name": "test_validator_rejects_corrupted_evidence_invariants[<lambda>3]",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_deliverables_validator",
+          "name": "test_validator_rejects_corrupted_evidence_invariants[<lambda>4]",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_deliverables_validator",
+          "name": "test_validator_rejects_corrupted_evidence_invariants[<lambda>5]",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_deliverables_validator",
+          "name": "test_validator_rejects_corrupted_evidence_invariants[<lambda>6]",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_deliverables_validator",
+          "name": "test_validator_rejects_secrets_mismatched_totals_stale_fingerprint_and_missing_asset",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_deliverables_validator",
+          "name": "test_builders_refuse_corrupt_bundle_and_render_non_pass_check_verdicts_honestly",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_deliverables_validator",
+          "name": "test_r8_rejects_swapped_png_wrong_run_asset_corrupt_bytes_and_stale_junit",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_deliverables_validator",
+          "name": "test_release_strict_rejects_skipped_and_missing_tracked_junit",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_deliverables_validator",
+          "name": "test_build_release_strict_rejects_empty_xml_missing_live_and_swapped_png_without_touching_outputs",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_deliverables_validator",
+          "name": "test_report_two_sections_page1_at_chapter1_and_table_4_1_na",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_lifecycle_scripts",
+          "name": "test_start_script_uses_strict_port_and_lf_line_endings",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_lifecycle_scripts",
+          "name": "test_stop_script_refuses_pid_reuse_cleans_stale_and_kills_pgid_sigterm_ignorer",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_lifecycle_scripts",
+          "name": "test_start_port_collision_and_verify_missing_frontend_fail_loudly",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_lifecycle_scripts",
+          "name": "test_start_refuses_when_parent_dead_but_pgid_child_alive",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_runs",
+          "name": "test_parse_nginx_log_filters_run_and_dedupes",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_runs",
+          "name": "test_create_run_partial_log_stays_pending_and_reconciles",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_runs",
+          "name": "test_idempotency_and_read_only_history_and_log_pagination",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_sandbox_policy",
+          "name": "test_build_docker_run_argv_enforces_policy",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_sandbox_policy",
+          "name": "test_validate_rejects_unknown_action_and_out_of_range_limits",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_sandbox_policy",
+          "name": "test_execute_tool_rejects_check_actions_and_bad_snapshot",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_sandbox_policy",
+          "name": "test_checks_classify_policy_violation_as_fail",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_sandbox_policy",
+          "name": "test_network_check_and_worker_separate_http_503_404_control_204_and_worker_crash",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_sandbox_policy",
+          "name": "test_worker_single_pass_hash_and_records_parity",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_scale_and_export",
+          "name": "test_scale_100_runs_10000_log_rows_and_300_char_path",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_tool_contracts",
+          "name": "test_mcp_tool_validation_rejects_bad_inputs",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_tool_contracts",
+          "name": "test_worker_treats_shell_metacharacters_in_logs_as_plain_data",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_tool_contracts",
+          "name": "test_agent_loop_snapshot_pinning_max_calls_and_missing_key",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_tool_contracts",
+          "name": "test_mcp_and_agent_reject_tampered_snapshot_digest_for_all_tools",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_tool_contracts",
+          "name": "test_live_answer_matcher_rejects_partial_number_counterexample",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_tool_contracts",
+          "name": "test_mcp_client_strips_llm_api_keys_from_stdio_subprocess_env",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_traffic_concurrency_regressions",
+          "name": "test_concurrent_idempotency_for_create_and_append_404",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_traffic_concurrency_regressions",
+          "name": "test_append_404_preserves_ready_snapshot_on_pre_send_error_and_recovers_on_same_key_retry",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_traffic_concurrency_regressions",
+          "name": "test_append_404_post_send_timeout_recovers_without_duplicate_and_rotation_safe_reconcile",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_traffic_concurrency_regressions",
+          "name": "test_append_404_read_timeout_with_delayed_log_no_duplicate_on_same_key_retry",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_traffic_concurrency_regressions",
+          "name": "test_create_run_mid_batch_read_timeout_recovers_via_refresh_and_same_key_retry_without_duplicate",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.unit.test_traffic_concurrency_regressions",
+          "name": "test_historical_readonly_never_dispatches_and_legacy_db_never_duplicates",
+          "status": "passed"
+        }
+      ]
+    },
+    "integration": {
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "cases": [
+        {
+          "classname": "tests.integration.test_agent_live",
+          "name": "test_live_agent_with_real_mcp_and_docker_3_of_10_then_4_of_11",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.integration.test_mcp",
+          "name": "test_real_mcp_discovery_and_all_three_tools_with_docker_worker",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.integration.test_nginx_runs",
+          "name": "test_real_nginx_create_run_and_append_404",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.integration.test_sandbox",
+          "name": "test_real_docker_sandbox_isolation_and_controls",
+          "status": "passed"
+        }
+      ]
+    },
+    "e2e": {
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "cases": [
+        {
+          "classname": "tests.e2e.test_milestone1_traffic",
+          "name": "test_visual_fixtures_and_live_traffic_flow",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.e2e.test_milestone3_all_screens",
+          "name": "test_agent_checks_accesslog_visuals_and_live_checks",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.e2e.test_web_regressions",
+          "name": "test_fixture_writes_send_zero_backend_requests",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.e2e.test_web_regressions",
+          "name": "test_deep_link_100_runs_10k_payload_budget_detail_503_and_retry_idempotency",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.e2e.test_web_regressions",
+          "name": "test_r2_delayed_mutation_responses_and_errors_do_not_clobber_switched_run",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.e2e.test_web_regressions",
+          "name": "test_r4_agent_terminal_messages_failure_auto_recovers_and_reload_result_avoids_duplicate_post",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.e2e.test_web_regressions",
+          "name": "test_r2_refresh_503_retry_calls_refresh_never_creates_run",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.e2e.test_web_regressions",
+          "name": "test_r4_delayed_intermediate_messages_do_not_overwrite_terminal_answer",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.e2e.test_web_regressions",
+          "name": "test_stage_b_agent_tab_switch_selected_request_read_retries_and_mobile_access_log",
+          "status": "passed"
+        },
+        {
+          "classname": "tests.e2e.test_web_regressions",
+          "name": "test_stage_b_unclicked_add404_advances_and_access_log_page_retry_and_traffic_page_error",
+          "status": "passed"
+        }
+      ]
+    }
+  },
+  "totals": {
+    "tests": 62,
+    "passed": 62,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0
+  }
+}

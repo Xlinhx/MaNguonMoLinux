@@ -1,0 +1,32 @@
+# Runtime data & local secrets
+.env
+.env.*
+!.env.example
+runtime/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.venv-linux/
+.pytest_cache/
+*.egg-info/
+
+# Node / Web
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Test & build scratch outputs
+test-results/
+playwright-report/
+deliverables/assets/cropped_*.png
+
+# OS & Editors
+.DS_Store
+Thumbs.db

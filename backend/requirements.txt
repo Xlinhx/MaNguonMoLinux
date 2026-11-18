@@ -1,0 +1,14 @@
+fastapi==0.162.0
+uvicorn==0.52.4
+pydantic==2.12.5
+httpx==0.28.1
+mcp==1.28.1
+pytest==9.1.1
+anthropic==0.117.0
+python-dotenv==1.2.2
+playwright==1.64.1
+python-docx==1.2.0
+python-pptx==1.0.2
+matplotlib==3.11.1
+PyMuPDF==1.28.2
+pillow==12.3.0
