@@ -426,6 +426,8 @@ def prepare_verified_image_stream(
     asset_name: str,
     *,
     crop_bottom_ratio: float | None = None,
+    crop_box: tuple[float, float, float, float] | None = None,
+    add_border: bool = False,
     preview_dir: Path | None = None,
 ) -> BytesIO:
     if asset_name not in verified_assets:
@@ -435,14 +437,22 @@ def prepare_verified_image_stream(
     actual_sha = hashlib.sha256(raw).hexdigest()
     if not expected_sha or actual_sha != expected_sha:
         raise ValidationError(f"In-memory verified buffer mismatch for '{asset_name}'")
-    if crop_bottom_ratio is None:
+    if crop_box is None and crop_bottom_ratio is None and not add_border:
         return BytesIO(raw)
-    from PIL import Image
+    from PIL import Image, ImageOps
 
     im = Image.open(BytesIO(raw))
-    cropped = im.crop((0, 0, im.width, int(im.height * crop_bottom_ratio)))
+    if crop_box is not None:
+        l_r, t_r, r_r, b_r = crop_box
+        box = (int(im.width * l_r), int(im.height * t_r), int(im.width * r_r), int(im.height * b_r))
+        im = im.crop(box)
+    elif crop_bottom_ratio is not None:
+        box = (0, 0, im.width, int(im.height * crop_bottom_ratio))
+        im = im.crop(box)
+    if add_border:
+        im = ImageOps.expand(im, border=1, fill="#CBD5E1")
     out = BytesIO()
-    cropped.save(out, format="PNG")
+    im.save(out, format="PNG")
     png_bytes = out.getvalue()
     if preview_dir is not None:
         preview_dir.mkdir(parents=True, exist_ok=True)

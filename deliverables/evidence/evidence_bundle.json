@@ -409,24 +409,18 @@
     }
   ],
   "provenance": {
-    "source_fingerprint": "69b253596e108e86258b1f1d48bc7b204ffbcf1a08ca81a2ec3ecb93b3aa2596",
+    "source_fingerprint": "3c06b59abb9aef2a6034aa6df64718a7e5cefa11cd7311a0b575a598f49c9db9",
     "manifest_files": 70,
     "capture_run": "Run 012",
     "live_key_active_in_final_ci": true,
     "assets": {
       "architecture.png": {
-        "sha256": "469a5810d6b98422004f590c1ca157daf73b3eade009363b5a10c65d353e8dd6",
-        "bytes": 313522,
-        "role": "diagram",
-        "run_id": null,
-        "snapshot_id": null
+        "sha256": "b06057b61c7c864e04417233353b6c6d4c43259b8e1deca393c88ce3a569a994",
+        "bytes": 361808
       },
       "mcp-sequence.png": {
-        "sha256": "1029f0d279fdc9a88e93d18f4b1345ec382564d6a0f92ccc73d70a978e5c52da",
-        "bytes": 132827,
-        "role": "diagram",
-        "run_id": null,
-        "snapshot_id": null
+        "sha256": "f4b90c455a7cf7b5dab84f05d98a3eb61466fba3d48177ca6ea50aa1dd6b4ee9",
+        "bytes": 201462
       },
       "live-traffic-verified.png": {
         "sha256": "110d0a1cf04fd7035ca8b0653d151f435d812cd267f40a55bf7695f634c1d0ab",
@@ -450,6 +444,6 @@
         "snapshot_id": "f94140a4-8df4-4365-9ff2-6fff34240f11"
       }
     },
-    "capture_note": "Historical Run 012 live session capture (2026-11-18); verified with 2026-11-19 source fingerprint, zero-skip JUnit suite (deliverables/junit/), and Ubuntu WSL2 receipt (deliverables/linux_wsl_receipt.json)."
+    "capture_note": "Historical Run 012 live session capture (2026-11-18); verified separately from current JUnit suite (deliverables/evidence/junit/) and Ubuntu WSL2 receipt (deliverables/evidence/linux_wsl_receipt.json)."
   }
 }

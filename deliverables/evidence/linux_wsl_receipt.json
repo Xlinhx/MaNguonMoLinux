@@ -1,6 +1,6 @@
 {
-  "verified_at_utc": "2026-11-18T20:12:25Z",
-  "source_fingerprint": "69b253596e108e86258b1f1d48bc7b204ffbcf1a08ca81a2ec3ecb93b3aa2596",
+  "verified_at_utc": "2026-11-18T20:42:59Z",
+  "source_fingerprint": "3c06b59abb9aef2a6034aa6df64718a7e5cefa11cd7311a0b575a598f49c9db9",
   "source_file_count": 70,
   "command": "bash scripts/preflight.sh && mkdir -p $PWD/runtime/.wsl-tmp && docker.exe compose -f infra/compose.yaml up -d && .venv-linux/bin/python -m pytest tests/integration/test_mcp.py -v --basetemp=$PWD/runtime/.wsl-tmp/pytest",
   "host_os": "Ubuntu 24.04.4 LTS",
@@ -14,8 +14,8 @@
   "worker_image_id": "sha256:70651b3f212ff2029b8642560b134c1c424da762ce030e0dcafb08f23d783b6e",
   "mount_paths": {
     "repo_linux": "/mnt/p/MaNguonMoLinux",
-    "snapshot_rev1_linux": "/mnt/p/MaNguonMoLinux/runtime/.wsl-receipt-tmp-291/snapshots/e9e1c52d-5cb0-4a03-acd2-909aeddb2f7b/rev-0001/access.jsonl",
-    "snapshot_rev2_linux": "/mnt/p/MaNguonMoLinux/runtime/.wsl-receipt-tmp-291/snapshots/e9e1c52d-5cb0-4a03-acd2-909aeddb2f7b/rev-0002/access.jsonl",
+    "snapshot_rev1_linux": "/mnt/p/MaNguonMoLinux/runtime/.wsl-receipt-tmp-298/snapshots/0c36c941-a0f8-414d-9019-55f2896424f3/rev-0001/access.jsonl",
+    "snapshot_rev2_linux": "/mnt/p/MaNguonMoLinux/runtime/.wsl-receipt-tmp-298/snapshots/0c36c941-a0f8-414d-9019-55f2896424f3/rev-0002/access.jsonl",
     "docker_host_path_note": "docker.exe + wslpath -w translates /mnt/p/... cleanly; WSL integration disabled on distro."
   },
   "mcp_tools_verified": [
@@ -24,11 +24,11 @@
     "top_error_paths"
   ],
   "mcp_secret_env_stripped": true,
-  "run_id": "e9e1c52d-5cb0-4a03-acd2-909aeddb2f7b",
+  "run_id": "0c36c941-a0f8-414d-9019-55f2896424f3",
   "revisions": {
     "rev1": {
-      "snapshot_id": "a046bff5-8827-46f4-a8ac-55e984d7bd80",
-      "sha256": "0b9f879b4e56171b9585bd0844ca6abb34237b8a743e2bee39b4868504749b30",
+      "snapshot_id": "366bea68-6f16-4f97-9dd7-a89d27e5e4a0",
+      "sha256": "1b7abc9b537b2b4a2e412a13c115068a1199347130262a495756b26c3a23f991",
       "total_requests": 10,
       "ok_count": 7,
       "not_found_count": 3,
@@ -41,8 +41,8 @@
       "recent_errors_count": 3
     },
     "rev2": {
-      "snapshot_id": "08e8d854-4fe8-4118-a1ee-8069948bc924",
-      "sha256": "571cb2102b304b949f41b35a73faa7e1b83a2042e6bd75fe701e288f72de5432",
+      "snapshot_id": "1c6b5bf7-bc91-4d93-b8b6-6722973d043b",
+      "sha256": "28827c1868919c6285fa2150abfffb3fcdbda57f18a0c1695eb3671f0d0a9947",
       "total_requests": 11,
       "ok_count": 7,
       "not_found_count": 4,

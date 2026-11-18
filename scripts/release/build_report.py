@@ -18,14 +18,23 @@ ASSETS = DELIV / "assets"
 EVIDENCE_DIR = DELIV / "evidence"
 EVIDENCE_JSON = EVIDENCE_DIR / "evidence_bundle.json"
 TEST_SUMMARY_JSON = EVIDENCE_DIR / "test_summary.json"
+WSL_RECEIPT_JSON = EVIDENCE_DIR / "linux_wsl_receipt.json"
 REQ_TXT = ROOT / "backend" / "requirements.txt"
 PKG_LOCK = ROOT / "web" / "package-lock.json"
 
 
 try:
-    from scripts.release.evidence_validator import prepare_verified_image_stream, validate_and_load_deliverables
+    from scripts.release.evidence_validator import (
+        compute_source_fingerprint,
+        prepare_verified_image_stream,
+        validate_and_load_deliverables,
+    )
 except ImportError:
-    from evidence_validator import prepare_verified_image_stream, validate_and_load_deliverables
+    from evidence_validator import (
+        compute_source_fingerprint,
+        prepare_verified_image_stream,
+        validate_and_load_deliverables,
+    )
 
 
 def _load_locked_versions() -> dict[str, str]:
@@ -45,7 +54,7 @@ def _load_locked_versions() -> dict[str, str]:
     return versions
 
 
-def _load_verified_evidence() -> tuple[dict, dict, dict[str, str], str, dict[str, bytes]]:
+def _load_verified_evidence() -> tuple[dict, dict, dict[str, str], str, int, dict[str, bytes]]:
     ev, ts, fp_hex, verified_assets = validate_and_load_deliverables(
         ROOT,
         evidence_path=EVIDENCE_JSON,
@@ -53,7 +62,65 @@ def _load_verified_evidence() -> tuple[dict, dict, dict[str, str], str, dict[str
         check_assets=True,
         check_fingerprint=True,
     )
-    return ev, ts, _load_locked_versions(), fp_hex, verified_assets
+    _, file_count, _ = compute_source_fingerprint(ROOT)
+    return ev, ts, _load_locked_versions(), fp_hex, file_count, verified_assets
+
+
+def _set_rfonts(element, font_name: str = "Times New Roman") -> None:
+    """Bind all four OpenXML font slots to Times New Roman so PDF conversion avoids sans fallbacks."""
+    rPr = element.get_or_add_rPr()
+    existing = rPr.find(qn("w:rFonts"))
+    if existing is not None:
+        rPr.remove(existing)
+    rPr.insert(
+        0,
+        parse_xml(
+            f'<w:rFonts {nsdecls("w")} w:ascii="{font_name}" w:hAnsi="{font_name}" '
+            f'w:cs="{font_name}" w:eastAsia="{font_name}"/>'
+        ),
+    )
+
+
+def _format_run(run, *, size_pt: int = 13, bold: bool = False, italic: bool = False, color: RGBColor = RGBColor(0, 0, 0)) -> None:
+    run.font.name = "Times New Roman"
+    run.font.size = Pt(size_pt)
+    run.bold = bold
+    run.italic = italic
+    run.font.color.rgb = color
+    _set_rfonts(run._r, "Times New Roman")
+
+
+def _configure_styles(doc: Document) -> None:
+    normal = doc.styles["Normal"]
+    normal.font.name = "Times New Roman"
+    normal.font.size = Pt(13)
+    normal.font.color.rgb = RGBColor(0, 0, 0)
+    _set_rfonts(normal._element, "Times New Roman")
+
+    for style_name, size_pt, space_before, space_after in (
+        ("Heading 1", 15, 10, 6),
+        ("Heading 2", 14, 10, 4),
+        ("Heading 3", 13, 8, 4),
+    ):
+        st = doc.styles[style_name]
+        st.font.name = "Times New Roman"
+        st.font.size = Pt(size_pt)
+        st.font.bold = True
+        st.font.color.rgb = RGBColor(0, 0, 0)
+        st.paragraph_format.space_before = Pt(space_before)
+        st.paragraph_format.space_after = Pt(space_after)
+        st.paragraph_format.keep_with_next = True
+        _set_rfonts(st._element, "Times New Roman")
+
+
+def _add_heading(doc: Document, text: str, level: int = 1, *, centered: bool = False) -> None:
+    p = doc.add_heading(level=level)
+    p.paragraph_format.keep_with_next = True
+    if centered:
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    size_pt = {1: 15, 2: 14, 3: 13}.get(level, 13)
+    run = p.add_run(text)
+    _format_run(run, size_pt=size_pt, bold=True)
 
 
 def _set_cell_shading(cell, fill_hex: str) -> None:
@@ -61,7 +128,7 @@ def _set_cell_shading(cell, fill_hex: str) -> None:
     cell._tc.get_or_add_tcPr().append(shading)
 
 
-def _set_cell_margins(cell, top=80, bottom=80, left=120, right=120) -> None:
+def _set_cell_margins(cell, top: int = 75, bottom: int = 75, left: int = 115, right: int = 115) -> None:
     tcPr = cell._tc.get_or_add_tcPr()
     tcMar = OxmlElement("w:tcMar")
     for m, val in [("top", top), ("bottom", bottom), ("left", left), ("right", right)]:
@@ -72,43 +139,157 @@ def _set_cell_margins(cell, top=80, bottom=80, left=120, right=120) -> None:
     tcPr.append(tcMar)
 
 
+def _set_borderless_table(table) -> None:
+    tblPr = table._tbl.tblPr
+    borders = parse_xml(
+        f'<w:tblBorders {nsdecls("w")}>'
+        '<w:top w:val="none"/><w:left w:val="none"/><w:bottom w:val="none"/>'
+        '<w:right w:val="none"/><w:insideH w:val="dotted" w:sz="4" w:space="0" w:color="CCCCCC"/>'
+        '<w:insideV w:val="none"/>'
+        '</w:tblBorders>'
+    )
+    tblPr.append(borders)
+
+
+def _apply_col_widths(table, col_widths_cm: list[float]) -> None:
+    """Enforce exact OOXML fixed table layout so LibreOffice/Word honor proportional column widths."""
+    table.autofit = False
+    dxa_widths = [int(round(w * 567)) for w in col_widths_cm]
+    total_dxa = sum(dxa_widths)
+    tblPr = table._tbl.tblPr
+    for tag in ("w:tblW", "w:tblLayout"):
+        old = tblPr.find(qn(tag))
+        if old is not None:
+            tblPr.remove(old)
+    tblPr.append(parse_xml(f'<w:tblW {nsdecls("w")} w:w="{total_dxa}" w:type="dxa"/>'))
+    tblPr.append(parse_xml(f'<w:tblLayout {nsdecls("w")} w:type="fixed"/>'))
+
+    tblGrid = table._tbl.tblGrid
+    if tblGrid is not None:
+        for gc in list(tblGrid):
+            tblGrid.remove(gc)
+        for dxa in dxa_widths:
+            tblGrid.append(parse_xml(f'<w:gridCol {nsdecls("w")} w:w="{dxa}"/>'))
+
+    for idx, (col, w_cm, dxa) in enumerate(zip(table.columns, col_widths_cm, dxa_widths)):
+        col.width = Cm(w_cm)
+        for row in table.rows:
+            cell = row.cells[idx]
+            cell.width = Cm(w_cm)
+            tcPr = cell._tc.get_or_add_tcPr()
+            old_w = tcPr.find(qn("w:tcW"))
+            if old_w is not None:
+                tcPr.remove(old_w)
+            tcPr.insert(0, parse_xml(f'<w:tcW {nsdecls("w")} w:w="{dxa}" w:type="dxa"/>'))
+
+
 def _add_page_number_footer(section) -> None:
     footer = section.footer
     p = footer.paragraphs[0]
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = p.add_run("Page ")
-    run.font.name = "Times New Roman"
-    run.font.size = Pt(11)
-    fld1 = parse_xml(r'<w:fldSimple %s w:instr="PAGE"/>' % nsdecls("w"))
-    p._p.append(fld1)
+    _format_run(p.add_run("Page "), size_pt=11)
+    for fld_xml in (
+        f'<w:fldChar {nsdecls("w")} w:fldCharType="begin"/>',
+        f'<w:instrText {nsdecls("w")} xml:space="preserve"> PAGE </w:instrText>',
+        f'<w:fldChar {nsdecls("w")} w:fldCharType="separate"/>',
+        f'<w:fldChar {nsdecls("w")} w:fldCharType="end"/>',
+    ):
+        r = p.add_run()
+        _format_run(r, size_pt=11)
+        r._r.append(parse_xml(fld_xml))
 
 
 def _add_toc_table(doc: Document, toc_pages: dict[str, int] | None = None) -> None:
-    sections = [
-        ("LIST OF ABBREVIATIONS", "Abbreviations and technical terms"),
-        ("LIST OF FIGURES AND TABLES", "Summary of embedded diagrams, live captures, and evaluation tables"),
-        ("INTRODUCTION", "Problem statement, objectives, scope, and group contributions"),
-        ("Chapter 1. TECHNICAL BACKGROUND", "Linux isolation, Docker/WSL2, MCP architecture, and Nginx logging"),
-        ("Chapter 2. SYSTEM DESIGN", "Trust boundaries, threat model, contracts, and sandbox policy"),
-        ("Chapter 3. IMPLEMENTATION", "Nginx/Snapshots, MCP server/client, policy runner, and Web UI"),
-        ("Chapter 4. EVALUATION", "Environment, control-paired isolation, live DeepSeek MCP, and test results"),
-        ("CONCLUSION", "Summary of achieved objectives and grounded future directions"),
-        ("REFERENCES", "Official sources and VKU formatting references"),
-        ("APPENDIX A: VERIFIED OSS VERSIONS AND GROUP CONTRIBUTION", "Locked versions, SPDX licenses, and member ownership"),
+    toc_items: list[tuple[str, int, str]] = [
+        ("INSTRUCTOR COMMENTS", 1, "—"),
+        ("LIST OF ABBREVIATIONS", 1, "—"),
+        ("LIST OF FIGURES AND TABLES", 1, "—"),
+        ("INTRODUCTION", 1, "—"),
+        ("Chapter 1. TECHNICAL BACKGROUND", 1, ""),
+        ("    1.1. Linux Container Isolation Primitives", 2, "1.1. Linux Container Isolation Primitives"),
+        ("    1.2. Docker Desktop Execution on Windows and WSL2", 2, "1.2. Docker Desktop Execution on Windows and WSL2"),
+        ("    1.3. Model Context Protocol and Nginx Access Logging", 2, "1.3. Model Context Protocol and Nginx Access Logging"),
+        ("Chapter 2. SYSTEM DESIGN", 1, ""),
+        ("    2.1. Architecture and Trust Boundaries", 2, "2.1. Architecture and Trust Boundaries"),
+        ("    2.2. Threat Model and Isolation Decisions", 2, "2.2. Threat Model and Isolation Decisions"),
+        ("    2.3. Data Contracts and Worker Sandbox Policy", 2, "2.3. Data Contracts and Worker Sandbox Policy"),
+        ("Chapter 3. IMPLEMENTATION", 1, ""),
+        ("    3.1. End-to-End Lifecycle of a Traffic Run", 2, "3.1. End-to-End Lifecycle of a Traffic Run"),
+        ("    3.2. MCP Tool Execution, Snapshot Pinning, and Count Verification", 2, "3.2. MCP Tool Execution, Snapshot Pinning, and Count Verification"),
+        ("    3.3. Operator Interface and Snapshot Inspection", 2, "3.3. Operator Interface and Snapshot Inspection"),
+        ("Chapter 4. EVALUATION", 1, ""),
+        ("    4.1. Experimental Environment and Evidence Sources", 2, "4.1. Experimental Environment and Evidence Sources"),
+        ("    4.2. Control-Paired Isolation Experiments and Verdict Analysis", 2, "4.2. Control-Paired Isolation Experiments and Verdict Analysis"),
+        ("    4.3. Automated Test Suite Results and Scope Limitations", 2, "4.3. Automated Test Suite Results and Scope Limitations"),
+        ("CONCLUSION", 1, ""),
+        ("APPENDIX A: ENVIRONMENT, TEST INVENTORY & CONTRIBUTIONS", 1, ""),
+        ("REFERENCES", 1, ""),
     ]
-    rows = []
-    for title, summary in sections:
-        pg = str(toc_pages[title]) if (toc_pages and title in toc_pages) else "—"
-        rows.append([title, summary, pg])
-    _add_table(doc, ["Section", "Scope Summary", "Page"], rows, [6.2, 8.3, 1.5])
+
+    table = doc.add_table(rows=1 + len(toc_items), cols=2)
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    _set_borderless_table(table)
+
+    hdr_trPr = table.rows[0]._tr.get_or_add_trPr()
+    hdr_trPr.append(parse_xml(f'<w:tblHeader {nsdecls("w")}/>'))
+    hdr_trPr.append(parse_xml(f'<w:cantSplit {nsdecls("w")}/>'))
+
+    h0, h1 = table.rows[0].cells
+    _format_run(h0.paragraphs[0].add_run("Section"), size_pt=11, bold=True)
+    h1.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    _format_run(h1.paragraphs[0].add_run("Page"), size_pt=11, bold=True)
+    _set_cell_margins(h0, top=40, bottom=40, left=60, right=60)
+    _set_cell_margins(h1, top=40, bottom=40, left=60, right=60)
+
+    for idx, (display_label, lvl, lookup_override) in enumerate(toc_items, start=1):
+        table.rows[idx]._tr.get_or_add_trPr().append(parse_xml(f'<w:cantSplit {nsdecls("w")}/>'))
+        c0, c1 = table.rows[idx].cells
+        key = lookup_override if lookup_override not in ("", "—") else display_label.strip()
+        if lookup_override == "—":
+            pg_str = "—"
+        elif toc_pages and key in toc_pages:
+            pg_str = str(toc_pages[key])
+        else:
+            pg_str = "—"
+
+        p0 = c0.paragraphs[0]
+        p0.paragraph_format.space_before = Pt(1)
+        p0.paragraph_format.space_after = Pt(1)
+        _format_run(p0.add_run(display_label), size_pt=11, bold=(lvl == 1))
+
+        p1 = c1.paragraphs[0]
+        p1.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        p1.paragraph_format.space_before = Pt(1)
+        p1.paragraph_format.space_after = Pt(1)
+        _format_run(p1.add_run(pg_str), size_pt=11, bold=(lvl == 1))
+
+        _set_cell_margins(c0, top=32, bottom=32, left=60, right=60)
+        _set_cell_margins(c1, top=32, bottom=32, left=60, right=60)
+    _apply_col_widths(table, [14.4, 1.6])
+    doc.add_paragraph()
 
 
-def _add_table(doc: Document, headers: list[str], rows: list[list[str]], col_widths: list[float] | None = None) -> None:
+def _add_table_caption(doc: Document, text: str) -> None:
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(6)
+    p.paragraph_format.space_after = Pt(3)
+    p.paragraph_format.keep_with_next = True
+    _format_run(p.add_run(text), size_pt=12, bold=True)
+
+
+def _add_table(
+    doc: Document,
+    headers: list[str],
+    rows: list[list[str]],
+    col_widths: list[float] | None = None,
+    *,
+    font_pt: int = 10,
+    pad_v: int = 55,
+) -> None:
     table = doc.add_table(rows=1 + len(rows), cols=len(headers))
     table.style = "Table Grid"
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
 
-    # Keep header row repeated across page breaks and prevent row splits
     hdr_trPr = table.rows[0]._tr.get_or_add_trPr()
     hdr_trPr.append(parse_xml(f'<w:tblHeader {nsdecls("w")}/>'))
     hdr_trPr.append(parse_xml(f'<w:cantSplit {nsdecls("w")}/>'))
@@ -116,35 +297,37 @@ def _add_table(doc: Document, headers: list[str], rows: list[list[str]], col_wid
     hdr_cells = table.rows[0].cells
     for idx, h in enumerate(headers):
         hdr_cells[idx].text = ""
-        run = hdr_cells[idx].paragraphs[0].add_run(h)
-        run.bold = True
-        run.font.name = "Times New Roman"
-        run.font.size = Pt(11)
+        p = hdr_cells[idx].paragraphs[0]
+        p.paragraph_format.line_spacing = 1.12
+        _format_run(p.add_run(h), size_pt=font_pt, bold=True)
         _set_cell_shading(hdr_cells[idx], "EAEFF5")
-        _set_cell_margins(hdr_cells[idx])
-        if col_widths:
-            hdr_cells[idx].width = Cm(col_widths[idx])
+        _set_cell_margins(hdr_cells[idx], top=pad_v, bottom=pad_v, left=95, right=95)
 
     for r_idx, row in enumerate(rows):
         table.rows[r_idx + 1]._tr.get_or_add_trPr().append(parse_xml(f'<w:cantSplit {nsdecls("w")}/>'))
         cells = table.rows[r_idx + 1].cells
         for c_idx, val in enumerate(row):
             cells[c_idx].text = ""
-            run = cells[c_idx].paragraphs[0].add_run(val)
-            run.font.name = "Times New Roman"
-            run.font.size = Pt(11)
-            _set_cell_margins(cells[c_idx])
-            if col_widths:
-                cells[c_idx].width = Cm(col_widths[c_idx])
-    doc.add_paragraph()
+            p = cells[c_idx].paragraphs[0]
+            p.paragraph_format.line_spacing = 1.12
+            _format_run(p.add_run(val), size_pt=font_pt)
+            _set_cell_margins(cells[c_idx], top=pad_v, bottom=pad_v, left=95, right=95)
+    if col_widths:
+        _apply_col_widths(table, col_widths)
+    p_sp = doc.add_paragraph()
+    p_sp.paragraph_format.space_before = Pt(0)
+    p_sp.paragraph_format.space_after = Pt(2)
+    _format_run(p_sp.add_run(" "), size_pt=3)
 
 
 def _add_figure(
     doc: Document,
     image_path: Path,
     caption: str,
-    width_cm: float = 15.0,
+    width_cm: float = 15.2,
     crop_bottom_ratio: float | None = None,
+    crop_box: tuple[float, float, float, float] | None = None,
+    add_border: bool = False,
     *,
     verified_assets: dict[str, bytes],
     bundle: dict,
@@ -154,6 +337,8 @@ def _add_figure(
         bundle,
         image_path.name,
         crop_bottom_ratio=crop_bottom_ratio,
+        crop_box=crop_box,
+        add_border=add_border,
     )
     p_img = doc.add_paragraph()
     p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -165,25 +350,27 @@ def _add_figure(
     p_cap = doc.add_paragraph()
     p_cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p_cap.paragraph_format.space_after = Pt(10)
-    r = p_cap.add_run(caption)
-    r.italic = True
-    r.font.name = "Times New Roman"
-    r.font.size = Pt(11)
+    _format_run(p_cap.add_run(caption), size_pt=11, italic=True)
 
 
-def _body(doc: Document, text: str, bold_prefix: str | None = None) -> None:
+def _body(doc: Document, text: str, bold_prefix: str | None = None, *, justify: bool = True) -> None:
     p = doc.add_paragraph()
     p.paragraph_format.line_spacing = 1.35
     p.paragraph_format.space_after = Pt(6)
-    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY if justify else WD_ALIGN_PARAGRAPH.LEFT
     if bold_prefix:
-        rb = p.add_run(bold_prefix)
-        rb.bold = True
-        rb.font.name = "Times New Roman"
-        rb.font.size = Pt(13)
-    r = p.add_run(text)
-    r.font.name = "Times New Roman"
-    r.font.size = Pt(13)
+        _format_run(p.add_run(bold_prefix), size_pt=13, bold=True)
+    _format_run(p.add_run(text), size_pt=13)
+
+
+def _ref_item(doc: Document, text: str) -> None:
+    p = doc.add_paragraph()
+    p.paragraph_format.left_indent = Cm(0.85)
+    p.paragraph_format.first_line_indent = Cm(-0.85)
+    p.paragraph_format.line_spacing = 1.18
+    p.paragraph_format.space_after = Pt(5)
+    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    _format_run(p.add_run(text), size_pt=13)
 
 
 def _bullet(doc: Document, text: str, bold_prefix: str | None = None) -> None:
@@ -191,17 +378,16 @@ def _bullet(doc: Document, text: str, bold_prefix: str | None = None) -> None:
     p.paragraph_format.line_spacing = 1.25
     p.paragraph_format.space_after = Pt(4)
     if bold_prefix:
-        rb = p.add_run(bold_prefix)
-        rb.bold = True
-        rb.font.name = "Times New Roman"
-        rb.font.size = Pt(13)
-    r = p.add_run(text)
-    r.font.name = "Times New Roman"
-    r.font.size = Pt(13)
+        _format_run(p.add_run(bold_prefix), size_pt=13, bold=True)
+    _format_run(p.add_run(text), size_pt=13)
 
 
 def build_report(toc_pages: dict[str, int] | None = None) -> Path:
-    export_data, test_summary, versions, source_fp, verified_assets = _load_verified_evidence()
+    export_data, test_summary, versions, source_fp, file_count, verified_assets = _load_verified_evidence()
+
+    wsl_receipt: dict = {}
+    if WSL_RECEIPT_JSON.is_file():
+        wsl_receipt = json.loads(WSL_RECEIPT_JSON.read_text(encoding="utf-8"))
 
     run_obj = export_data["run"]
     snap_obj = export_data["snapshot"]
@@ -228,6 +414,8 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
     total_tests = test_summary["totals"]["tests"]
     total_passed = test_summary["totals"]["passed"]
     total_skipped = test_summary["totals"]["skipped"]
+    ts_prov = test_summary.get("provenance") or {}
+    live_model_name = str(ts_prov.get("model") or "deepseek-chat")
 
     pass_count = sum(1 for c in checks if c.get("verdict") == "pass")
     total_checks = len(checks)
@@ -255,8 +443,9 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
     rev2_txt = str(rev2_ans["content"]).replace("**", "").strip() if rev2_ans else "4/11"
 
     doc = Document()
+    _configure_styles(doc)
 
-    # Configure A4 & VKU margins (top/bottom/right 2 cm, left 3 cm) [7]
+    # Section 1: Cover Page, Instructor Comments, ToC, Abbreviations, Lists, Introduction (Unnumbered per VKU guide [8])
     sec = doc.sections[0]
     sec.page_width = Cm(21.0)
     sec.page_height = Cm(29.7)
@@ -264,121 +453,168 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
     sec.bottom_margin = Cm(2.0)
     sec.left_margin = Cm(3.0)
     sec.right_margin = Cm(2.0)
-    normal = doc.styles["Normal"]
-    normal.font.name = "Times New Roman"
-    normal.font.size = Pt(13)
-    normal.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
-
-    for lvl, sz in [("Heading 1", 15), ("Heading 2", 14), ("Heading 3", 13)]:
-        st = doc.styles[lvl]
-        st.font.name = "Times New Roman"
-        st.font.size = Pt(sz)
-        st.font.bold = True
-        st.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
 
     # --- COVER PAGE ---
     def _center(txt: str, size: int, bold: bool = False, space_after: int = 6) -> None:
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p.paragraph_format.space_after = Pt(space_after)
-        r = p.add_run(txt)
-        r.font.name = "Times New Roman"
-        r.font.size = Pt(size)
-        r.bold = bold
+        _format_run(p.add_run(txt), size_pt=size, bold=bold)
 
     _center("VIETNAM - KOREA UNIVERSITY OF INFORMATION AND", 13, bold=True, space_after=2)
     _center("COMMUNICATION TECHNOLOGY (VKU)", 13, bold=True, space_after=4)
-    _center("FACULTY OF COMPUTER SCIENCE", 13, bold=True, space_after=40)
+    _center("FACULTY OF COMPUTER SCIENCE", 13, bold=True, space_after=42)
 
     _center("COURSE PROJECT REPORT", 18, bold=True, space_after=6)
-    _center("LINUX OPEN SOURCE SOFTWARE (LINUX OSS 2026)", 14, bold=True, space_after=28)
+    _center("LINUX OPEN SOURCE SOFTWARE (LINUX OSS 2026)", 14, bold=True, space_after=32)
 
     _center("TOPIC 17:", 14, bold=True, space_after=4)
     _center("SECURE AGENTIC AI TOOL EXECUTION", 16, bold=True, space_after=4)
-    _center("USING LINUX SANDBOX (SANDBOX LAB)", 16, bold=True, space_after=44)
+    _center("USING LINUX SANDBOX (SANDBOX LAB)", 16, bold=True, space_after=56)
 
-    cover_table = doc.add_table(rows=4, cols=2)
+    cover_table = doc.add_table(rows=3, cols=2)
     cover_table.alignment = WD_TABLE_ALIGNMENT.CENTER
     cover_rows = [
-        ("Group Members (3):", "Member A (Linux / Nginx / Worker Policy)\nMember B (MCP / Agent / API / Storage)\nMember C (Web Operator UI / QA / Report)"),
-        ("Class / Cohort:", "[Confirm class code before final submission]"),
-        ("Instructor:", "[Confirm instructor name before final submission]"),
-        ("Deliverable Status:", "Verified draft aligned with VKU A4/margins and TNR 13 pt guide (pending student names/class metadata)"),
+        (
+            "Group Members (3):",
+            "Member A — [Student Name, Student ID]\n"
+            "Member B — [Student Name, Student ID]\n"
+            "Member C — [Student Name, Student ID]",
+        ),
+        ("Class / Cohort:", "[Class Code]"),
+        ("Instructor:", "[Instructor Name]"),
     ]
     for idx, (k, v) in enumerate(cover_rows):
         cover_table.rows[idx]._tr.get_or_add_trPr().append(parse_xml(f'<w:cantSplit {nsdecls("w")}/>'))
         c0, c1 = cover_table.rows[idx].cells
-        c0.width = Cm(5.5)
-        c1.width = Cm(10.0)
-        r0 = c0.paragraphs[0].add_run(k)
-        r0.bold = True
-        r0.font.name = "Times New Roman"
-        r0.font.size = Pt(12)
-        r1 = c1.paragraphs[0].add_run(v)
-        r1.font.name = "Times New Roman"
-        r1.font.size = Pt(12)
+        _format_run(c0.paragraphs[0].add_run(k), size_pt=12, bold=True)
+        _format_run(c1.paragraphs[0].add_run(v), size_pt=12)
+        _set_cell_margins(c0, top=60, bottom=60, left=80, right=80)
+        _set_cell_margins(c1, top=60, bottom=60, left=80, right=80)
+    _apply_col_widths(cover_table, [4.6, 11.4])
 
-    doc.add_paragraph()
+    p_gap = doc.add_paragraph()
+    p_gap.paragraph_format.space_after = Pt(64)
     _center("Da Nang, November 2026", 13, bold=True, space_after=0)
     doc.add_page_break()
 
-    # Section 1 (Cover, ToC, Front Matter, Introduction) stays unnumbered.
-    # Page 1 starts in Section 2 at Chapter 1.
-    doc.add_heading("TABLE OF CONTENTS", level=1)
+    # --- INSTRUCTOR COMMENTS PAGE (VKU general layout [8]) ---
+    _add_heading(doc, "INSTRUCTOR COMMENTS", level=1, centered=True)
+    _body(doc, "Comments and grading evaluation by the course instructor:")
+    comment_box = doc.add_table(rows=1, cols=1)
+    comment_box.style = "Table Grid"
+    comment_box.alignment = WD_TABLE_ALIGNMENT.CENTER
+    comment_cell = comment_box.rows[0].cells[0]
+    comment_cell.width = Cm(15.8)
+    _set_cell_margins(comment_cell, top=180, bottom=180, left=140, right=140)
+    for _ in range(14):
+        p_blank = comment_cell.add_paragraph()
+        p_blank.paragraph_format.space_after = Pt(12)
+        _format_run(p_blank.add_run(" "), size_pt=12)
+    doc.add_paragraph()
+    p_sig = doc.add_paragraph()
+    p_sig.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    _format_run(p_sig.add_run("Da Nang, ____ / ____ / 2026\nInstructor Signature"), size_pt=12, bold=True)
+    doc.add_page_break()
+
+    # --- TABLE OF CONTENTS ---
+    _add_heading(doc, "TABLE OF CONTENTS", level=1, centered=True)
     _add_toc_table(doc, toc_pages=toc_pages)
     doc.add_page_break()
 
-    doc.add_heading("LIST OF ABBREVIATIONS", level=1)
+    # --- LIST OF ABBREVIATIONS ---
+    _add_heading(doc, "LIST OF ABBREVIATIONS", level=1)
     _add_table(
         doc,
         ["Abbreviation", "Full Term"],
         [
+            ["AI", "Artificial Intelligence"],
             ["API", "Application Programming Interface"],
+            ["ASGI", "Asynchronous Server Gateway Interface"],
             ["CLI", "Command-Line Interface"],
+            ["CPU", "Central Processing Unit"],
+            ["E2E", "End-to-End"],
+            ["HTTP", "Hypertext Transfer Protocol"],
+            ["JSON", "JavaScript Object Notation"],
             ["JSONL", "JSON Lines (one JSON object per line)"],
             ["LLM", "Large Language Model"],
             ["MCP", "Model Context Protocol"],
             ["OOM", "Out of Memory"],
+            ["OS", "Operating System"],
             ["PID", "Process Identifier"],
+            ["QA", "Quality Assurance"],
             ["REST", "Representational State Transfer"],
+            ["SDK", "Software Development Kit"],
             ["SHA-256", "Secure Hash Algorithm 256-bit"],
+            ["UI", "User Interface"],
             ["UID / GID", "User Identifier / Group Identifier"],
+            ["UML", "Unified Modeling Language"],
+            ["UUID", "Universally Unique Identifier"],
             ["VKU", "Vietnam-Korea University of Information and Communication Technology"],
+            ["VM", "Virtual Machine"],
+            ["WAL", "Write-Ahead Logging"],
             ["WSL2", "Windows Subsystem for Linux 2"],
         ],
-        [4.0, 12.0],
+        [3.4, 12.6],
+        font_pt=9,
+        pad_v=24,
     )
+    doc.add_page_break()
 
-    doc.add_heading("LIST OF FIGURES AND TABLES", level=1)
-    _bullet(doc, "Figure 2.1: Sandbox Lab Architecture and Trust Boundaries")
-    _bullet(doc, "Figure 3.1: MCP Tool Execution and Snapshot Pinning Sequence")
-    _bullet(doc, f"Figure 3.2: [Live Runtime] Traffic Screen for {run_label} ({req_count} Requests, Revision {snap_rev})")
-    _bullet(doc, f"Figure 3.3: [Live Runtime] Checks Screen Showing {checks_caption_phrase} ({run_label} Revision {snap_rev})")
-    _bullet(doc, f"Figure 4.1: [Live Runtime] Agent Q&A with DeepSeek + MCP Tool Inspector ({run_label}: Rev 1 -> Rev 2)")
-    _bullet(doc, "Table 2.1: Sandbox Worker Policy Controls (sandbox-policy-v1)")
-    _bullet(doc, "Table 4.1: Control-Paired Isolation Test Results on Real Docker Engine")
-    _bullet(doc, f"Table 4.2: Automated Verification Suite Summary ({total_passed}/{total_tests} Passed" + (f", {total_skipped} Skipped)" if total_skipped else ")"))
+    # --- LIST OF FIGURES & LIST OF TABLES (with real printed Page numbers) ---
+    fig_titles = [
+        ("Figure 2.1", "System Architecture and Trust Boundaries"),
+        ("Figure 3.1", "UML Sequence Diagram of MCP Tool Execution (Agent Loop to Docker Worker, Rev 1)"),
+        ("Figure 3.2", f"[Historical Capture · Run 012] Traffic Screen ({req_count} Requests, Revision {snap_rev})"),
+        ("Figure 3.3", f"[Historical Capture · Run 012] Checks Screen Showing {checks_caption_phrase} (Revision {snap_rev})"),
+        ("Figure 4.1", f"[Historical Capture · Run 012] Agent Q&A Across Revisions 1 and 2"),
+    ]
+    tbl_titles = [
+        ("Table 2.1", "Threat Vectors Mapped to System Design Decisions"),
+        ("Table 2.2", "Sandbox Worker Policy Controls (sandbox-policy-v1)"),
+        ("Table 3.1", "Reused Open-Source Components vs. Group-Authored Modules"),
+        ("Table 4.1", "Control-Paired Sandbox Isolation Results and Worker-Only Probes"),
+        ("Table 4.2", f"Automated Verification Summary ({total_passed}/{total_tests} Tests Passed" + (f", {total_skipped} Skipped)" if total_skipped else ")")),
+        ("Table A.1", "Verified Software Environment and Runtime Configuration"),
+        ("Table A.2", "Locked Open-Source Dependencies and Licenses"),
+        ("Table A.3", "Group Member Roles and Authored Modules"),
+    ]
+
+    _add_heading(doc, "LIST OF FIGURES AND TABLES", level=1)
+    _add_table_caption(doc, "List of Figures")
+    fig_rows = [
+        [num, title, str(toc_pages[num]) if (toc_pages and num in toc_pages) else "—"]
+        for num, title in fig_titles
+    ]
+    _add_table(doc, ["Figure", "Title", "Page"], fig_rows, [2.4, 12.0, 1.6], font_pt=10, pad_v=36)
+
+    _add_table_caption(doc, "List of Tables")
+    tbl_rows = [
+        [num, title, str(toc_pages[num]) if (toc_pages and num in toc_pages) else "—"]
+        for num, title in tbl_titles
+    ]
+    _add_table(doc, ["Table", "Title", "Page"], tbl_rows, [2.4, 12.0, 1.6], font_pt=10, pad_v=36)
     doc.add_page_break()
 
     # --- INTRODUCTION ---
-    doc.add_heading("INTRODUCTION", level=1)
+    _add_heading(doc, "INTRODUCTION", level=1)
     _body(
         doc,
-        "Agentic AI systems increasingly connect Large Language Models (LLMs) to external tools so models can inspect files, query logs, and verify system state. "
-        "However, granting an LLM direct shell access or unrestricted host filesystem and network access introduces severe security risks: prompt injection embedded in untrusted log payloads, accidental or malicious file tampering, credential exfiltration over outbound networks, and unbounded CPU or memory consumption [1]. "
-        "Notably, the Model Context Protocol (MCP) standardizes how an AI host discovers and invokes typed tools [5], but MCP itself is an integration protocol—it does not isolate or sandbox tool execution.",
+        "How can an Artificial Intelligence (AI) agent count Hypertext Transfer Protocol (HTTP) 404 responses in an Nginx access log while Linux restricts what its tools can read, write, and access over the network? "
+        "This question defines the engineering problem addressed in Topic 17 of Linux Open Source Software (Linux OSS 2026) at Vietnam-Korea University of Information and Communication Technology (VKU). "
+        "When an AI host connects a Large Language Model (LLM) to local inspection tools, granting direct shell execution exposes raw host files, credentials, and network interfaces to untrusted model arguments or crafted log lines [4].",
     )
     _body(
         doc,
-        "This project implements Topic 17 of Linux OSS 2026: Secure Agentic AI Tool Execution using Linux Sandbox (Sandbox Lab). "
-        "Rather than merely installing third-party containers, our group built an end-to-end verifiable laboratory combining real Nginx JSON access logging [6], immutable SHA-256-pinned log snapshots, an official MCP stdio server/client exposing three strictly typed log-analysis tools [5], a trusted policy runner enforcing Linux container isolation primitives [1, 2, 3], a control-paired verification harness distinguishing real policy enforcement from infrastructure errors, and a four-screen React/TypeScript operator web interface.",
+        "Although the Model Context Protocol (MCP) standardizes tool discovery and typed JavaScript Object Notation (JSON) schemas between an AI host and a tool server, MCP is an integration boundary rather than an isolation mechanism [1]. "
+        "To resolve both halves of the problem concurrently, the group designed Sandbox Lab with two parallel objectives: "
+        "(1) produce accurate, revision-aware HTTP log analyses from a live Nginx service, and "
+        "(2) confine every tool invocation inside an ephemeral, non-root Linux container whose filesystem writes and network egress are restricted by kernel mechanisms.",
     )
     _body(
         doc,
-        f"Key deliverables verified end to end in this report include: (1) a repeatable local stack on Docker Desktop Linux Engine + Ubuntu 24.04 WSL2 [4]; "
-        f"(2) atomic SQLite idempotent run generation (10 initial requests: 7 HTTP 200 and 3 HTTP 404, advancing cleanly to {req_count}/{ok_count}/{nf_count} on {run_label} Revision {snap_rev}); "
-        "(3) behavioral and control-paired isolation proofs (isolated ro_copy/rw_copy write checks preserving immutable snapshots, --network none vs. bridged control, outside-mount host marker absence, 10s timeout cleanup, and 128 MiB OOMKilled=True enforcement); and "
-        f"(4) full end-to-end verification across {total_passed}/{total_tests} automated tests including live DeepSeek (deepseek-flash) MCP tool execution over stdio (3/10 on Revision 1 advancing to 4/11 on Revision 2) alongside clean Model unavailable offline fallback.",
+        "Success is evaluated against measurable evidence rather than assumption. Every analysis batch is frozen into an immutable JSON Lines (JSONL) snapshot identified by a Secure Hash Algorithm 256-bit (SHA-256) digest, and every sandbox restriction is paired with a relaxed control execution to verify that blocked behavior stems from Linux policy enforcement rather than broken test fixtures [2, 4]. "
+        "The remainder of this report proceeds from background primitives (Chapter 1) to trust-boundary architecture (Chapter 2), end-to-end request and tool workflows (Chapter 3), control-paired evaluation and scope limits (Chapter 4), and overall conclusions.",
     )
 
     # --- SECTION 2: MAIN CONTENT STARTING AT PAGE 1 ---
@@ -396,129 +632,243 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
     _add_page_number_footer(sec2)
 
     # --- CHAPTER 1 ---
-    doc.add_heading("Chapter 1. TECHNICAL BACKGROUND", level=1)
-    doc.add_heading("1.1. Linux Container Isolation Primitives", level=2)
+    _add_heading(doc, "Chapter 1. TECHNICAL BACKGROUND", level=1)
     _body(
         doc,
-        "Linux containers combine kernel namespaces, control groups (cgroups), Linux capabilities, and filesystem mount flags to confine processes without spawning a separate virtual machine per task [1]. "
-        "In Sandbox Lab, each tool invocation uses a fresh container configured with: (a) PID and network namespaces (--network none disables all non-loopback interfaces and DNS resolution) [3]; "
-        "(b) non-root execution (--user 10001:10001) so container processes hold zero root privileges [1]; (c) dropped capabilities (--cap-drop ALL) and --security-opt no-new-privileges:true to prevent privilege escalation via setuid binaries [1]; "
-        "(d) a read-only root filesystem (--read-only) paired with a bounded non-executable tmpfs (/tmp:rw,noexec,nosuid,nodev,size=16m) and read-only bind mount (--mount ...,readonly) for input snapshot data [2]; and "
-        "(e) cgroup resource ceilings (--memory 128m, --memory-swap 128m, --pids-limit 64, --cpus 0.5) plus Docker's default seccomp syscall filter [1, 3].",
+        "Understanding why Sandbox Lab enforces restrictions beneath MCP requires distinguishing kernel-level Linux isolation primitives from host-level execution environments and application protocols.",
     )
 
-    doc.add_heading("1.2. Docker Desktop Architecture on Windows and WSL2", level=2)
+    _add_heading(doc, "1.1. Linux Container Isolation Primitives", level=2)
     _body(
         doc,
-        "On Windows 11 with WSL2, Docker Desktop runs its Linux Engine inside a managed utility VM (context desktop-linux) rather than inside the user's Ubuntu 24.04 distribution [4]. "
-        "Distinguishing these two environments is essential for reproducibility: Ubuntu 24.04 WSL2 provides Linux userland tooling (Python 3.12.3, LibreOffice, Bash scripts), while Docker Desktop's desktop-linux context executes the actual Linux kernel containers (x86_64, seccomp, cgroup v2) [4]. "
-        "Because Docker Desktop WSL Integration was unmounted inside Ubuntu-24.04 (/var/run/docker.sock absent), our scripts and policy runner support both native Linux docker and Windows docker.exe via wslpath translation without requiring conflicting nested Docker daemons.",
+        "Linux containers isolate workloads on a shared kernel by combining namespaces, control groups (cgroups), Linux capability dropping, and filesystem mount flags [4]. "
+        "Process identifier (PID) and network namespaces restrict what processes and sockets a container can observe; running without network interfaces blocks outbound connections and name resolution [5]. "
+        "Executing processes under a dedicated non-root user identifier and group identifier (UID/GID), dropping all Linux capabilities, and disabling privilege acquisition prevent processes from escalating privileges via setuid binaries [4]. "
+        "Mount flags add filesystem protection: a read-only root filesystem paired with a read-only bind mount prevents modification of input logs on the host [2], while memory, PID, and Central Processing Unit (CPU) limits bound resource usage [5]. "
+        "Exact runtime flags applied to every Sandbox Lab container are consolidated in Table 2.2.",
     )
 
-    doc.add_heading("1.3. Model Context Protocol (MCP) and Nginx JSON Access Logging", level=2)
+    _add_heading(doc, "1.2. Docker Desktop Execution on Windows and WSL2", level=2)
     _body(
         doc,
-        f"MCP defines a client-server boundary over structured JSON-RPC messages (implemented via official Python SDK mcp=={versions.get('mcp', '1.28.1')} over stdio transport) [5]. "
-        "The host discovers available tools (list_tools) and sends bounded tool arguments (call_tool), while execution security is enforced below MCP inside the trusted policy runner. "
-        "For authentic Linux service traffic, Nginx (nginx:1.27-alpine) exposes /demo (HTTP 200) and /missing (HTTP 404) and emits structured JSONL records containing timestamp, run_id, request_id, seq, method, path, status, bytes_sent, and request_time [6].",
+        "On Windows 11 with Windows Subsystem for Linux 2 (WSL2), Docker Desktop executes Linux containers inside a managed utility virtual machine (VM, context desktop-linux) rather than inside the user's Ubuntu Operating System (OS) distribution [3]. "
+        "In this project's test environment, Ubuntu 24.04.4 WSL2 provides Linux developer tools (Python 3.12, Bash scripts, Node/Vite, and LibreOffice), while Docker Desktop's desktop-linux engine provides the Linux kernel namespaces, cgroups v2, and seccomp filtering used by worker containers [3]. "
+        "When Docker Desktop WSL Integration is disabled and /var/run/docker.sock is absent inside Ubuntu, the runner delegates container commands to Windows docker.exe using wslpath translation so snapshot bind mounts on Windows-backed paths remain accessible to the container engine.",
+    )
+
+    _add_heading(doc, "1.3. Model Context Protocol and Nginx Access Logging", level=2)
+    _body(
+        doc,
+        "MCP defines a client-server protocol over structured JSON-RPC messages over standard input/output (stdio) [1]. "
+        "An AI host discovers typed tools via list_tools and dispatches validated arguments via call_tool; however, MCP itself provides no process, network, or filesystem confinement [1]. "
+        "To ground log analysis in authentic Linux service behavior, Nginx serves HTTP routes /demo (HTTP 200) and /missing (HTTP 404) and emits structured JSONL access records carrying timestamp, run identifier, request identifier, sequence number, HTTP method, path, status, bytes_sent, and request_time [6].",
     )
 
     # --- CHAPTER 2 ---
-    doc.add_heading("Chapter 2. SYSTEM DESIGN", level=1)
-    doc.add_heading("2.1. Architecture and Trust Boundaries", level=2)
+    _add_heading(doc, "Chapter 2. SYSTEM DESIGN", level=1)
     _body(
         doc,
-        "Figure 2.1 illustrates the four trust zones in Sandbox Lab: (1) the operator Web UI and external LLM provider API (DeepSeek / OpenAI / Gemini / Anthropic, which propose bounded tool calls to FastAPI's Agent Loop and never touch MCP or Docker directly); "
-        "(2) Nginx lab service producing untrusted raw access logs; (3) the Trusted Host Boundary (FastAPI backend, Agent Loop with 30s deadline and strict MCP verification gate, SQLite WAL store, immutable snapshot store, MCP stdio server, and Policy Runner); and "
-        "(4) the ephemeral Isolated Worker container and internal test-service network [1, 5].",
-    )
-    _add_figure(doc, ASSETS / "architecture.png", "Figure 2.1: Sandbox Lab Architecture and Trust Boundaries", width_cm=15.5, verified_assets=verified_assets, bundle=export_data)
-
-    doc.add_heading("2.2. Threat Model and Mitigations", level=2)
-    _add_table(
-        doc,
-        ["Threat Vector", "Untrusted Source", "Defense Implemented in Design"],
-        [
-            ["Arbitrary command / shell injection", "LLM arguments or crafted URLs in Nginx logs", "No shell tool exposed; subprocess uses argv list with shell=False; worker parses JSON via json.loads() only [1]."],
-            ["Host filesystem tampering or escape", "Compromised worker process", "Immutable snapshots mounted --mount readonly; write check uses isolated 0666 ro_copy/rw_copy temp files, leaving source SHA-256 untouched [2]."],
-            ["Direct LLM guessing without evidence", "Model skipping tool calls on log queries", "AgentService rejects any direct numeric answer lacking a completed MCP ToolResult matched to (run_id, snapshot_id) [5]."],
-            ["Path traversal in tool arguments", "Malformed run_id or snapshot_id", "Strict UUID parsing, allowlisted actions, integer bounds (1-20 / 1-50), and Path.relative_to(snapshots_dir) check."],
-            ["Data exfiltration or lateral scan", "Worker process", "--network none disables interfaces; paired control verifies test-service reachability on sandbox_lab_net [3]."],
-            ["Resource exhaustion / hung worker", "Infinite loop, pipe flood, or OOM spike", "--memory 128m, --pids-limit 64, --cpus 0.5, 64 KiB pipe cap, total 30s job deadline + job-scoped container cleanup [3]."],
-        ],
-        [4.2, 4.0, 7.8],
+        "To answer the central design question without trusting either the external language model or raw Nginx log lines, Sandbox Lab separates proposal, host orchestration, and isolated worker execution across explicit trust zones.",
     )
 
-    doc.add_heading("2.3. Data Contracts and Sandbox Worker Policy", level=2)
+    _add_heading(doc, "2.1. Architecture and Trust Boundaries", level=2)
     _body(
         doc,
-        f"The backend persists typed Pydantic v2 models ({versions.get('pydantic', '2.12.5')}) in SQLite WAL mode with BEGIN IMMEDIATE reservation transactions: Run, Snapshot, ToolResult, CheckResult (pinned per snapshot_id), and JobRecord. "
-        "Table 2.1 summarizes the worker isolation policy enforced uniformly by build_docker_run_argv().",
+        "As shown in Figure 2.1, the system divides components into external interfaces on the left, a trusted Python host boundary in the center, and two strictly separated container zones on the right. "
+        "Operators interact through a React Web User Interface (UI) over Representational State Transfer (REST) Application Programming Interface (API) calls. "
+        "When a user submits a question, the FastAPI Agent Loop transmits the question, the three MCP tool schemas (count_status_codes, recent_http_errors, and top_error_paths), and bounded JSON tool outputs to the configured external LLM provider, receiving proposed tool calls and draft answer prose in return. "
+        "Because recent_http_errors and top_error_paths return bounded fields (HTTP path, request ID, status code, and timestamp), the provider observes selected log fields in tool results, but never receives host filesystem paths, raw log files, or environment credentials.",
     )
+    _body(
+        doc,
+        "Inside the trusted host boundary, Nginx HTTP traffic dispatch and JSONL log reading remain separate responsibilities: Traffic Service sends HTTP requests to Nginx and reads confirmed JSONL lines to freeze immutable snapshots in Snapshot Store. "
+        "Only the Trusted Policy Runner communicates with the Docker daemon. On the right side of Figure 2.1, isolated worker containers launched with network access disabled are separated from the internal lab test-service network (sandbox_lab_net): "
+        "tool workers cannot reach the internal test service, whereas paired control probes attached to sandbox_lab_net reach HTTP 200 /ping cleanly [2, 4, 5].",
+    )
+    _add_figure(
+        doc,
+        ASSETS / "architecture.png",
+        "Figure 2.1: System Architecture and Trust Boundaries",
+        width_cm=14.4,
+        verified_assets=verified_assets,
+        bundle=export_data,
+    )
+
+    _add_heading(doc, "2.2. Threat Model and Isolation Decisions", level=2)
+    _body(
+        doc,
+        "Each design decision in Sandbox Lab corresponds directly to a failure or abuse vector identified in the threat model (Table 2.1). "
+        "Rather than permitting workers to read live mutable Nginx logs, the host extracts confirmed entries for a single run and freezes them into a revisioned snapshot file verified by SHA-256 before and after worker execution. "
+        "Similarly, observing a blocked write or failed connection inside a sandbox is inconclusive on its own because a misconfigured path or down service produces the same failure. "
+        "The Control Harness therefore pairs each sandbox check with an identical relaxed control run so only positive control confirmation alongside sandbox refusal yields a Pass verdict.",
+    )
+
+    _add_table_caption(doc, "Table 2.1: Threat Vectors Mapped to System Design Decisions")
     _add_table(
         doc,
-        ["Policy Dimension", f"Configured Setting ({env_info.get('policy_version', 'sandbox-policy-v1')})", "Evidence Classification"],
+        ["Threat Vector", "Untrusted Source", "Design Mitigation"],
         [
-            ["User / Group", "--user 10001:10001 (non-root sandbox user)", "Config inspected + runtime os.getuid() [1]"],
-            ["Root Filesystem", "--read-only + --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m", "Config inspected (ReadonlyRootfs=true) [1]"],
-            ["Snapshot Bind Mount", "--mount type=bind,src=...,dst=/input/access.jsonl,readonly", "Behavioral + isolated writable-copy control [2]"],
-            ["Network Isolation", "--network none", "Behavioral + sandbox_lab_net control [3]"],
-            ["Capabilities & Privs", "--cap-drop ALL --security-opt no-new-privileges:true", "Config inspected (CapDrop, SecurityOpt) [1]"],
-            ["Compute & PIDs", "--memory 128m --memory-swap 128m --cpus 0.5 --pids-limit 64", "Inspect + 200 MiB OOMKilled=True exit 137 [3]"],
-            ["Timeout, Pipes & Cleanup", "min(10s, remaining), 64 KiB stream cap, label cleanup", "Behavioral abort + ps clean + cleanup_ok check"],
+            ["Shell or command injection", "Model arguments or crafted HTTP request paths", "Subprocesses use explicit argv lists (shell=False); worker exposes fixed subcommands only and parses JSON via json.loads() [4]."],
+            ["Host filesystem tampering", "Compromised log-analysis worker process", "Input snapshot mounted readonly; write checks run on isolated temporary copies, keeping source SHA-256 unchanged [2]."],
+            ["Stale or mismatched snapshot reads", "Race between Add 404 updates and queries", "Every tool call and check binds server-side to (run_id, snapshot_id, revision) verified by SHA-256."],
+            ["Fabricated or inverted numeric answers", "Model skipping tools or swapping counts", "Agent loop rejects zero-tool answers, requires count_status_codes on count questions, and validates role consistency."],
+            ["Outbound data exfiltration", "Worker process opening network sockets", "Tool workers run with networking disabled; paired control probes verify test-service availability separately [5]."],
+            ["Resource exhaustion or hung tasks", "Infinite loops, fork storms, or memory spikes", "128 MiB memory ceiling, PID/CPU limits, 64 KiB stream cap, 10s worker timeout, and job-scoped container removal [5]."],
         ],
-        [4.0, 7.0, 5.0],
+        [4.0, 4.0, 8.0],
+        font_pt=9.5,
+        pad_v=30,
+    )
+
+    _add_heading(doc, "2.3. Data Contracts and Worker Sandbox Policy", level=2)
+    _body(
+        doc,
+        "State persistence uses SQLite in Write-Ahead Logging (WAL) mode with explicit transaction reservations for Run, Snapshot, ToolResult, CheckResult (pinned per snapshot), and JobRecord models. "
+        "Every container launched by the Trusted Policy Runner shares the uniform isolation profile documented in Table 2.2, separating runtime behavioral observations from configuration-inspected attributes.",
+    )
+    _add_table_caption(doc, "Table 2.2: Sandbox Worker Policy Controls (sandbox-policy-v1)")
+    _add_table(
+        doc,
+        ["Policy Dimension", f"Configured Setting ({env_info.get('policy_version', 'sandbox-policy-v1')})", "Verification Basis"],
+        [
+            ["User / Group", "--user 10001:10001 (non-root user)", "Container config inspect + runtime os.getuid() [4]"],
+            ["Root Filesystem", "--read-only + --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m", "Config inspected (ReadonlyRootfs=true) [4]"],
+            ["Snapshot Bind Mount", "--mount type=bind,src=...,dst=/input/access.jsonl,readonly", "Behavioral write refusal + writable control copy [2]"],
+            ["Network Isolation", "--network none", "Behavioral block + sandbox_lab_net HTTP 200 control [5]"],
+            ["Capabilities & Privileges", "--cap-drop ALL --security-opt no-new-privileges:true", "Config inspected (CapDrop, SecurityOpt) [4]"],
+            ["Compute & PIDs", "--memory 128m --memory-swap 128m --cpus 0.5 --pids-limit 64", "Runtime 200 MiB Out-of-Memory (OOM) kill (exit 137) + docker inspect [5]"],
+            ["Timeout & Cleanup", "min(10s, deadline), 64 KiB pipe cap, label-scoped docker rm -f", "Behavioral 15s sleep abort + empty docker ps -a check"],
+        ],
+        [3.4, 7.6, 5.0],
     )
 
     # --- CHAPTER 3 ---
-    doc.add_heading("Chapter 3. IMPLEMENTATION", level=1)
-    doc.add_heading("3.1. Reused Open-Source Components vs. Group-Authored Modules", level=2)
+    _add_heading(doc, "Chapter 3. IMPLEMENTATION", level=1)
     _body(
         doc,
-        "Consistent with Linux OSS 2026 guidelines, Sandbox Lab builds on standard OSS components while authoring the full integration, security isolation, and UI stack:",
+        "While Sandbox Lab builds upon open-source infrastructure components (Table 3.1), the traffic state machine, immutable revisioning, MCP validation wrapper, container runner, control harness, and operator interface were authored by the group.",
     )
-    _bullet(doc, "infra/compose.yaml, infra/nginx/default.conf, infra/test-service/default.conf: Custom JSON access log format capturing X-Sandbox-Run-Id, X-Sandbox-Request-Id, and X-Sandbox-Seq [6]; internal test-service (:8081 internal, :18081 host) for network controls.", bold_prefix="Infrastructure: ")
-    _bullet(doc, "worker/Dockerfile, worker/main.py: Non-root UID 10001 worker image executing nine fixed subcommands (3 MCP log tools + 6 harness checks, including parameterized check_outside_mount --path).", bold_prefix="Worker Image: ")
-    _bullet(doc, "backend/app/store.py, snapshots.py, traffic.py: Atomic BEGIN IMMEDIATE idempotency reservations (create_run and append_attempts), snapshot-protected reconciliation on log rotation, and immutable SHA-256 snapshot creation.", bold_prefix="Run & Snapshot Engine: ")
-    _bullet(doc, "backend/app/sandbox.py, checks.py: Shared policy argv builder, bounded streaming pipe reader, explicit job-label container cleanup, isolated 0666 ro_copy/rw_copy write checks, and strict Pass/Fail/Error verdicts.", bold_prefix="Policy Runner & Controls: ")
-    _bullet(doc, "backend/app/mcp_server.py, mcp_client.py, agent.py, api.py: FastMCP stdio server [5], timeout-bounded stdio ClientSession, DeepSeek/OpenAI/Gemini/Anthropic adapters (no silent fallback when explicit provider lacks key), mandatory MCP evidence gate, and cursor-paginated REST + export endpoints.", bold_prefix="MCP & Agent API: ")
-    _bullet(doc, "web/src/theme.css, components/, pages/: Shared shell, custom SVG two-rail logo, in-memory fixture isolation (?fixture=... makes zero backend writes), paginated sequence & log queries (?include_requests=false), inert/Tab focus-trapped BottomSheets, and 44px+ mobile touch targets.", bold_prefix="Web Operator UI: ")
 
-    doc.add_heading("3.2. MCP Execution Flow and Snapshot Pinning", level=2)
+    _add_heading(doc, "3.1. End-to-End Lifecycle of a Traffic Run", level=2)
     _body(
         doc,
-        "When an operator submits a question in Agent, FastAPI's AgentService pins the active snapshot_id and revision before querying the external model adapter [5]. "
-        "The external LLM receives only the question, typed MCP tool schemas, and subsequent bounded JSON tool outputs—never raw host paths, logs outside the pinned snapshot, or Docker credentials. "
-        "To invoke a tool, the host Python client (McpLabClient) explicitly strips all LLM secret environment variables (DEEPSEEK_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY) and spawns backend/app/mcp_server.py over stdio. "
-        "Inside the trusted boundary, mcp_server.py validates UUIDs and calls sandbox.execute_tool(), which verifies the snapshot's SHA-256 digest on disk and again on the worker payload, launching ephemeral Docker worker container sandbox-lab-worker:v1 inside Docker Desktop's desktop-linux VM (OS-level namespace/cgroup isolation sharing the VM kernel; controlled solely via the host Docker CLI/daemon) [1, 4]. "
-        "Adding a 404 request advances the run revision cleanly (preserving earlier checks in check_history and flagging older Q&A replies with an amber stale-snapshot Ask again banner).",
+        "A complete run begins when the operator triggers Create run in the Web UI. Using an idempotent SQLite reservation, the backend plans ten ordered HTTP requests—seven GET /demo (200 OK) and three GET /missing (404 Not Found)—assigning each request a Universally Unique Identifier (UUID) and sequence number in custom HTTP headers (X-Sandbox-Run-Id, X-Sandbox-Request-Id, X-Sandbox-Seq). "
+        "Traffic Service tracks per-request dispatch state (not_sent, dispatched_uncertain, or sent) before and after each HTTP call so retrying a failed batch after a lost HTTP response never dispatches duplicate requests. "
+        "Historical runs marked non-current remain read-only: backend reconciliation and UI controls emit zero HTTP requests on historical runs, and pre-migration rows lacking dispatch history default safely to legacy_unknown.",
     )
-    _add_figure(doc, ASSETS / "mcp-sequence.png", "Figure 3.1: MCP Tool Execution and Snapshot Pinning Sequence", width_cm=15.0, verified_assets=verified_assets, bundle=export_data)
+    _body(
+        doc,
+        "Once Nginx flushes all ten JSONL records to disk, Snapshot Store writes an immutable Revision 1 snapshot file atomically via temporary file replacement, records its SHA-256 digest in SQLite, and marks the run ready. "
+        "Triggering Add 404 appends an eleventh GET /missing request and seals Revision 2 (11 requests: 7 successful, 4 not found). Because Revision 1's snapshot directory remains immutable on disk, earlier agent answers remain anchored to Revision 1 while stale banners invite the operator to re-query Revision 2.",
+    )
+    _add_table_caption(doc, "Table 3.1: Reused Open-Source Components vs. Group-Authored Modules")
+    _add_table(
+        doc,
+        ["Layer", "Reused Open-Source Software", "Group-Authored Implementation"],
+        [
+            ["Lab Web Service", "nginx:1.27-alpine container image [6]", "Custom JSONL access log format with run/request correlation headers and internal /ping target."],
+            ["Worker Runtime", "alpine:3.21 + python3 base image", "Non-root UID 10001 worker entrypoint implementing single-pass read/hash and 3 MCP + 6 check actions."],
+            ["State & Snapshots", "FastAPI, Pydantic v2, SQLite WAL", "Idempotent batch reservation, crash-safe atomic snapshots, revision protection across log rotation."],
+            ["MCP & Isolation", "MCP Python Software Development Kit (SDK, stdio) [1]", "Key-stripping McpLabClient, server-side UUID/SHA-256 enforcement, shell=False Docker runner, and Control Harness."],
+            ["Operator Console", "React 19, TypeScript, Vite", "Four-screen console, cursor-paginated log viewer, in-memory fixture preview, and mobile bottom sheets."],
+        ],
+        [3.2, 4.8, 8.0],
+    )
 
-    doc.add_heading("3.3. Live Verified Operator Interface", level=2)
+    _add_heading(doc, "3.2. MCP Tool Execution, Snapshot Pinning, and Count Verification", level=2)
     _body(
         doc,
-        f"Figures 3.2 and 3.3 show historical live runtime screenshots captured from Playwright on {run_label} (Revision {snap_rev}, ID: {run_id}, captured 2026-11-18) backed by real Nginx logs and {env_info.get('worker_image', 'sandbox-lab-worker:v1')}. "
-        f"Traffic displays the {req_count}/{ok_count}/{nf_count} transition; Checks shows {checks_summary_phrase} bound to Snapshot {snap_rev} ({snap_sha}...).",
+        "Figure 3.1 traces a user's aggregate count query through the Agent Loop and isolated worker using Unified Modeling Language (UML) sequence notation (solid arrows denote calls; dashed arrows denote returns) [7]. "
+        "When the operator submits a question, POST /api/runs/{run_id}/questions enqueues an asynchronous background task and returns a trackable job_id; the Agent Loop task then pins the run's active snapshot_id, revision, and SHA-256 digest and opens a 30-second deadline before calling the LLM provider. "
+        "When the provider proposes count_status_codes, McpLabClient strips all provider API keys from the child environment and invokes the MCP server over stdio. "
+        "The MCP server validates UUIDs and invokes the Trusted Policy Runner, which checks the snapshot's SHA-256 digest on disk and spawns docker run with readonly snapshot mounting and networking disabled.",
     )
-    _add_figure(doc, ASSETS / "live-traffic-verified.png", f"Figure 3.2: [Live Runtime] Traffic Screen on {run_label} ({req_count} Requests: {ok_count} OK, {nf_count} 404)", width_cm=14.8, crop_bottom_ratio=0.73, verified_assets=verified_assets, bundle=export_data)
-    _add_figure(doc, ASSETS / "live-checks-verified.png", f"Figure 3.3: [Live Runtime] Checks Screen Showing {checks_caption_phrase} on {run_label} Revision {snap_rev}", width_cm=14.8, crop_bottom_ratio=0.60, verified_assets=verified_assets, bundle=export_data)
+    _body(
+        doc,
+        "The worker reads and hashes /input/access.jsonl in a single streaming pass, prints JSON counts ({total_requests: 10, status_200: 7, status_404: 3, snapshot_sha256}) to standard output, and exits. "
+        "Crucially, container cleanup (docker rm -f) and digest verification are executed by the Policy Runner on the host—never by the worker itself—before returning ToolResult back across MCP stdio. "
+        "The Agent Loop forwards the bounded JSON result to the LLM provider to draft a natural-language reply, then verifies both revision pinning and numeric role consistency: if a model swaps numerator and denominator (such as reporting '10 out of 3'), the host synthesizes a single authoritative response directly from the verified count_status_codes payload before UI polling checks GET /api/jobs/{job_id} and renders GET /api/runs/{run_id}/messages. "
+        "For deeper drill-down on the same run, recent_http_errors and top_error_paths return newest error sequence IDs and paths (such as GET /missing) that cross-reference directly against the Access log screen.",
+    )
+    _add_figure(
+        doc,
+        ASSETS / "mcp-sequence.png",
+        "Figure 3.1: UML Sequence Diagram of MCP Tool Execution (Agent Loop to Docker Worker, Rev 1)",
+        width_cm=15.6,
+        verified_assets=verified_assets,
+        bundle=export_data,
+    )
+
+    _add_heading(doc, "3.3. Operator Interface and Snapshot Inspection", level=2)
+    _body(
+        doc,
+        f"Figures 3.2 and 3.3 reproduce audited historical live captures from {run_label} (Revision {snap_rev}, captured 2026-11-18) running against Docker Nginx and {env_info.get('worker_image', 'sandbox-lab-worker:v1')}. "
+        f"In Figure 3.2, the Traffic view displays the read-only banner for historical {run_label}, the {req_count}-request breakdown ({ok_count} HTTP 200, {nf_count} HTTP 404), and sequence cell #10 selected for inspection. "
+        f"In Figure 3.3, the Checks view presents {checks_summary_phrase} pinned to Snapshot {snap_rev} alongside Write log's paired control evidence confirming that writes to the readonly copy failed while the writable control copy recorded the marker. "
+        "The fourth console view, Access log, provides cursor-paginated inspection of raw JSONL request entries cross-linked directly from Traffic and Checks, and is omitted here for brevity.",
+    )
+    _add_figure(
+        doc,
+        ASSETS / "live-traffic-verified.png",
+        f"Figure 3.2: [Historical Capture · {run_label}] Traffic Screen ({req_count} Requests, Revision {snap_rev})",
+        width_cm=15.8,
+        crop_box=(0.055, 0.015, 0.945, 0.81),
+        add_border=True,
+        verified_assets=verified_assets,
+        bundle=export_data,
+    )
+    _add_figure(
+        doc,
+        ASSETS / "live-checks-verified.png",
+        f"Figure 3.3: [Historical Capture · {run_label}] Checks Screen Showing {checks_caption_phrase} (Revision {snap_rev})",
+        width_cm=15.8,
+        crop_box=(0.055, 0.015, 0.945, 0.585),
+        add_border=True,
+        verified_assets=verified_assets,
+        bundle=export_data,
+    )
 
     # --- CHAPTER 4 ---
-    doc.add_heading("Chapter 4. EVALUATION", level=1)
-    doc.add_heading("4.1. Test Environment and Exported Session Evidence", level=2)
+    _add_heading(doc, "Chapter 4. EVALUATION", level=1)
     _body(
         doc,
-        f"Post-remediation verification ran on November 19, 2026 on {env_info.get('os', 'Windows 11')} (Docker Desktop Engine 29.7.2, Compose v5.4.0, desktop-linux context), Python {env_info.get('python', '3.12.10')}, Node v24.19.0, and clean Ubuntu 24.04.4 LTS WSL2 onboarding (Python 3.12.3 isolated venv, Linux @rollup/rollup-x64-gnu Vite build, and Linux MCP stdio receipt in deliverables/evidence/linux_wsl_receipt.json) [4]. "
-        f"The audited historical session export (deliverables/evidence/evidence_bundle.json, captured 2026-11-18 on {run_label}, Snapshot ID: {snap_id}, SHA-256: {snap_sha}...) confirms {checks_outcome_phrase} on Revision {snap_rev} (plus {max(0, len(check_history) - len(checks))} prior checks in check_history = {len(check_history)} total check records) and completed live DeepSeek (deepseek-flash) MCP Q&A across Revision 1 ('{rev1_txt}') and Revision 2 ('{rev2_txt}'), illustrated in Figure 4.1.",
+        "Evaluation tests whether the implemented system answers log-count queries accurately across snapshot revisions while enforcing and accurately classifying Linux sandbox limits.",
     )
-    _add_figure(doc, ASSETS / "live-agent-verified.png", f"Figure 4.1: [Live Runtime] Agent Q&A with DeepSeek + MCP Tool Inspector ({run_label}: Rev 1 -> Rev 2)", width_cm=14.8, crop_bottom_ratio=0.84, verified_assets=verified_assets, bundle=export_data)
 
-    doc.add_heading("4.2. Control-Paired Sandbox Isolation Results", level=2)
+    _add_heading(doc, "4.1. Experimental Environment and Evidence Sources", level=2)
     _body(
         doc,
-        "Table 4.1 summarizes observed outcomes from the live Checks ledger (deliverables/evidence/evidence_bundle.json) and real Docker integration suite (tests/integration/test_sandbox.py).",
+        "All claims in this chapter draw from three distinct evidence sources recorded in Appendix A: "
+        f"(1) the audited historical session capture from {run_label} (Figure 4.1, showing Revision 1 '3 404s / 10' advancing to Revision 2 '4 404s / 11' via DeepSeek MCP calls); "
+        f"(2) the full automated verification suite ({total_passed}/{total_tests} passing tests across unit, live Docker/Nginx/DeepSeek integration using {live_model_name}, and Playwright End-to-End (E2E) tests); and "
+        "(3) an independent Ubuntu 24.04.4 LTS WSL2 run invoking Windows docker.exe across both Revisions 1 and 2 for all three MCP tools. "
+        "Separating historical screenshots from automated JUnit suites and the Linux receipt prevents stale visual artifacts from being mistaken for live runtime outputs of later code edits.",
     )
+    _add_figure(
+        doc,
+        ASSETS / "live-agent-verified.png",
+        f"Figure 4.1: [Historical Capture · {run_label}] Agent Q&A Across Revisions 1 and 2",
+        width_cm=15.8,
+        crop_box=(0.055, 0.015, 0.945, 0.82),
+        add_border=True,
+        verified_assets=verified_assets,
+        bundle=export_data,
+    )
+
+    _add_heading(doc, "4.2. Control-Paired Isolation Experiments and Verdict Analysis", level=2)
+    _body(
+        doc,
+        "To evaluate whether Linux network isolation genuinely blocks egress without misclassifying an unreachable service as a pass, the Control Harness runs two containers under identical image, UID, and command arguments. "
+        "Under networking disabled, the sandboxed worker failed to reach the internal test service. A second control worker connected to the lab bridge network (sandbox_lab_net) received HTTP 200 JSON from the same endpoint, establishing that the service was healthy during the isolation test and justifying a Pass verdict (Table 4.1). "
+        "When negative fault-injection tests replaced the control response with HTTP 204 or simulated an abnormal container exit code (137), the application refused Pass/Fail and classified the run as Error; conversely, when a mocked sandbox unexpectedly reached an HTTP 404 or 503 response while the control succeeded, it classified the outcome as Fail (Allowed).",
+    )
+    _body(
+        doc,
+        "File write protection follows the same paired methodology without touching the canonical snapshot. "
+        "The harness clones the snapshot to two temporary 0666 copies: the sandbox container mounts one copy read-only and rejects writes (exit 1, SHA-256 unchanged), while the control container mounts the second copy writable and writes SANDBOX_WRITE_MARKER. "
+        "Additional worker-level checks—outside-mount marker absence via --path, 15s sleep timeout with docker ps -a cleanup verification, and 200 MiB allocation inside a 128 MiB cgroup (OOMKilled=True, exit 137)—were executed directly through worker/runner integration tests and therefore carry N/A (worker probe) as their UI application verdict in Table 4.1.",
+    )
+
     read_chk = next(c for c in checks if c["name"] == "read_log")
     write_chk = next(c for c in checks if c["name"] == "write_log")
     net_chk = next(c for c in checks if c["name"] == "reach_test_service")
@@ -542,94 +892,133 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
         if net_chk["verdict"] == "pass"
         else f"{(net_chk.get('evidence') or {}).get('summary', 'Execution error')} | Control: {net_ctrl.get('summary', 'Control not verified')}"
     )
+
+    _add_table_caption(doc, "Table 4.1: Control-Paired Sandbox Isolation Results and Worker-Only Probes")
     _add_table(
         doc,
         ["Test Case", "Expected", "Observed & Control Proof", "Test / App Verdict", "Verification Mode"],
         [
-            ["Read log (snapshot)", read_chk["expected"], read_proof, f"Test: Pass | App: {read_chk['verdict'].capitalize()}", "Behavioral + SHA-256 control"],
+            ["Read log (snapshot)", read_chk["expected"], read_proof, f"Test: Pass | App: {read_chk['verdict'].capitalize()}", "Behavioral + SHA-256 match"],
             ["Write log (ro vs rw)", write_chk["expected"], write_proof, f"Test: Pass | App: {write_chk['verdict'].capitalize()}", "Behavioral + isolated rw copy"],
             ["Reach test service", net_chk["expected"], net_proof, f"Test: Pass | App: {net_chk['verdict'].capitalize()}", "Behavioral + sandbox_lab_net"],
-            ["Outside mount marker", "Blocked", "Host secret marker created on host; check_outside_mount --path returned found=false (exit != 0).", "Test: Pass | App: N/A (worker probe)", "Behavioral + parameterized marker"],
-            ["Timeout & cleanup", "Terminated", "15s sleep aborted at 1.5s timeout; docker ps -a by call-id returned empty; follow-up read succeeded.", "Test: Pass | App: N/A (worker probe)", "Behavioral + ps verification"],
-            ["Memory limit (200 MiB)", "OOM Kill", "200 MiB allocation in 128m container exited 137 (OOMKilled=True); --cpus 0.5 & --pids-limit 64 config-inspected.", "Test: Pass | App: N/A (worker probe)", "Observed OOM + docker inspect"],
-            ["Network 503/404 vs Ctrl 204", "Fail / Error", "Worker HTTP 503/404 with HTTP 200 /ping JSON control -> App Fail; Control HTTP 204 or worker crash -> App Error.", "Test: Pass | App: Fail / Error", "Negative HTTP & fault injection"],
-            ["Infra / timeout fault", "Error", "Missing image, dead control service, or read_log timeout classified strictly as App verdict='error' (never Pass/Fail).", "Test: Pass | App: Error", "Negative fault injection"],
+            ["Outside mount marker", "Blocked", "Host marker created; check_outside_mount --path returned found=false (exit != 0).", "Test: Pass | App: N/A (worker probe)", "Behavioral + --path probe"],
+            ["Timeout & cleanup", "Terminated", "15s sleep aborted at 1.5s timeout; docker ps -a empty; subsequent read succeeded.", "Test: Pass | App: N/A (worker probe)", "Behavioral + ps check"],
+            ["Memory limit (200 MiB)", "OOM Kill", "200 MiB allocation in 128m cgroup exited 137 (OOMKilled=True); CPU/PID flags inspected.", "Test: Pass | App: N/A (worker probe)", "Observed OOM + docker inspect"],
+            ["HTTP 503/404 vs Ctrl 204", "Fail / Error", "Sandbox HTTP 503/404 with 200 /ping control -> Fail; Ctrl 204 or exit 137 -> Error.", "Test: Pass | App: Fail / Error", "Fault injection"],
+            ["Infra / timeout fault", "Error", "Missing image, down test-service, or read_log timeout -> App verdict='error' (never Pass/Fail).", "Test: Pass | App: Error", "Fault injection"],
         ],
-        [2.9, 1.6, 6.2, 2.3, 3.0],
+        [2.7, 2.0, 5.8, 2.5, 3.0],
+        pad_v=45,
     )
 
-    doc.add_heading("4.3. Automated Test Suite Summary and Scope Boundaries", level=2)
+    _add_heading(doc, "4.3. Automated Test Suite Results and Scope Limitations", level=2)
     unit_status = f"{unit_s['passed']} passed" + (f" ({unit_s['skipped']} skipped)" if unit_s["skipped"] else " (0 failed)")
     int_status = f"{int_s['passed']} passed" + (f" ({int_s['skipped']} skipped)" if int_s["skipped"] else " (0 failed)")
     e2e_status = f"{e2e_s['passed']} passed" + (f" ({e2e_s['skipped']} skipped)" if e2e_s["skipped"] else " (0 failed)")
     total_status = f"{total_passed} passed / {total_tests} total" + (f" ({total_skipped} skipped)" if total_skipped else "")
+
+    _body(
+        doc,
+        "Table 4.2 summarizes automated verification across unit regressions (historical read-only protection, pre-migration legacy safety, number inversion checks, single-pass worker reads, and strict release validation), live container/MCP integration, Playwright E2E UI tests, and Ubuntu WSL2 execution. "
+        "Two payload-related tests measure distinct properties and are reported separately: mocked run-detail metadata responses with ?include_requests=false stayed under 2,048 bytes, while cursor pagination queries were verified over 10,000 rows; neither test constitutes a full-system throughput benchmark.",
+    )
+    _add_table_caption(
+        doc,
+        f"Table 4.2: Automated Verification Summary ({total_passed}/{total_tests} Tests Passed" + (f", {total_skipped} Skipped)" if total_skipped else ")"),
+    )
     _add_table(
         doc,
         ["Suite / Command", "Scope Covered", "Observed Result"],
         [
-            [f"tests/unit/ ({unit_n} tests)", "Runs/concurrency/idempotency, late-log ReadTimeout, isolated check copies, pipe cap, snapshot check pinning, MCP gate & deadline, lifecycle scripts, deliverable validator, 10k scale", unit_status],
-            [f"tests/integration/ ({int_n} tests)", "Real Docker Nginx runs, real Docker isolation/OOMKilled/cleanup, real MCP stdio tools, live DeepSeek test (skipped if no key in env)", int_status],
-            [f"tests/e2e/ ({e2e_n} tests)", "Playwright 1440/1280/390/360 visuals (0 backend writes), 100-run deep link, 10,000-row cursor-paginated log query & mocked run detail < 2,048 bytes (?include_requests=false), R2/R4 & Stage B recovery", e2e_status],
-            ["WSL2 Ubuntu Clean Onboarding", "Isolated Linux Python 3.12.3 venv, @rollup/rollup-linux-x64-gnu Vite build, real Nginx -> MCP stdio -> Docker rev1/rev2", "Passed (linux_wsl_receipt.json)"],
-            ["web: npm run typecheck && build", "TypeScript strict check and Vite production bundle (Windows & Linux)", "Exit 0"],
-            ["Total Pytest Verified", f"Source fingerprint: {source_fp[:16]}...", total_status],
+            [f"tests/unit/ ({unit_n} tests)", "Idempotent batch creation, historical read-only safety, legacy database upgrade, number guard, check faults, script hygiene, strict release validation, 10k pagination", unit_status],
+            [f"tests/integration/ ({int_n} tests)", f"Live Docker Nginx runs, Docker isolation/OOMKilled/cleanup, FastMCP stdio tools, live DeepSeek ({live_model_name}) test", int_status],
+            [f"tests/e2e/ ({e2e_n} tests)", "Playwright desktop/mobile UI, 100-run deep link, 10k cursor logs, < 2,048 B mocked detail, focus trap, security-invariant and UI regression cases", e2e_status],
+            ["WSL2 Ubuntu Verification", "Linux Vite build + real Nginx → MCP stdio → docker.exe worker across Revisions 1 and 2 (3/10 → 4/11)", "Passed"],
+            ["Web Typecheck & Build", "TypeScript compiler check (tsc --noEmit) and Vite bundle build", "Exit 0"],
+            ["Total Pytest Verified", f"Source fingerprint prefix: {source_fp[:16]}... ({len(check_history)} check_history records across Revisions 1–2 in Run 012 export)", total_status],
         ],
-        [5.2, 7.6, 3.2],
+        [4.8, 8.0, 3.2],
     )
     _body(
         doc,
-        "Remaining Environmental Scope Notes: (1) Container isolation relies on the Linux kernel shared inside Docker Desktop's desktop-linux VM and does not claim hardware-VM isolation against kernel vulnerabilities [1, 4]. "
-        "(2) In Ubuntu 24.04 WSL2 without /var/run/docker.sock enabled, scripts/start.sh and scripts/verify.sh fall back to Windows docker.exe + wslpath -w and keep runtime bind-mount paths under /mnt/<drive>/... cleanly [4]. "
-        "(3) Without a live LLM API key in the environment, the UI cleanly exercises Model unavailable, and McpLabClient strips all LLM provider secret variables before spawning the MCP stdio server [5]. "
-        "(4) Formal VKU formatting note: Huong-dan-trinh-bay-original.doc specifies Times New Roman 13 pt while KHMT-report-original.docx Normal style uses 14 pt [7]; confirm final point size and cover metadata (student names, class code, instructor) prior to submission.",
+        "Measured boundaries also define clear engineering limits. First, containers inside Docker Desktop's desktop-linux VM share a single Linux kernel; OS-level isolation limits filesystem, network, capability, and memory privileges but does not isolate against kernel vulnerabilities like a hardware VM [3, 4]. "
+        "Second, the FastAPI backend remains part of the Trusted Computing Base because it holds Docker Command-Line Interface (CLI) privileges and reads LLM credentials from its terminal environment. "
+        "Third, without an LLM provider API key exported to the backend terminal, the Agent screen renders Model unavailable while Traffic, Checks, Access log, and deterministic MCP container tools remain operable.",
     )
 
     # --- CONCLUSION ---
-    doc.add_heading("CONCLUSION", level=1)
+    _add_heading(doc, "CONCLUSION", level=1)
     _body(
         doc,
-        "Sandbox Lab demonstrates a complete, verifiable pattern for secure agentic AI tool execution on Linux: models and untrusted logs never obtain shell or Docker privileges, while every tool invocation runs inside an ephemeral non-root container bound to an immutable SHA-256 log snapshot with --read-only rootfs, --network none, dropped capabilities, strict MCP tool verification, total task deadlines, and deterministic cleanup [1, 2, 3, 5]. "
-        "Pairing sandbox checks with isolated writable and networked controls guarantees that isolation claims reflect kernel enforcement rather than broken test fixtures.",
+        "Returning to the question posed at the start—how an AI agent can count HTTP 404 responses in an Nginx log while Linux limits tool capabilities—Sandbox Lab resolves the problem by decoupling model reasoning from execution privilege. "
+        "Nginx requests are recorded per run into immutable SHA-256-pinned snapshots, exposed strictly through three typed MCP stdio tools with provider secrets stripped, and executed inside ephemeral non-root Docker containers with read-only mounts and disabled networking [1, 2, 4].",
+    )
+    _body(
+        doc,
+        "Across live integration and WSL2 execution, the system traced HTTP batches from 3 of 10 errors in Revision 1 to 4 of 11 after appending a 404 request in Revision 2, prevented inverted model counts from corrupting saved answers, and distinguished enforced blocks (Pass) from missing controls or abnormal worker exits (Error). "
+        "Future work could adopt rootless or microVM container runtimes to reduce kernel sharing across host and worker environments.",
     )
 
-    # --- REFERENCES & APPENDICES ---
-    doc.add_heading("REFERENCES", level=1)
+    # --- APPENDIX A ---
+    _add_heading(doc, "APPENDIX A: ENVIRONMENT, TEST INVENTORY & CONTRIBUTIONS", level=1)
+    _add_table_caption(doc, "Table A.1: Verified Software Environment and Runtime Configuration")
+    _add_table(
+        doc,
+        ["Parameter", "Recorded Value"],
+        [
+            ["Host OS / WSL2 Kernel", f"{env_info.get('os', 'Windows 11')} · {wsl_receipt.get('host_os', 'Ubuntu 24.04.4 LTS')} ({wsl_receipt.get('kernel', 'WSL2')})"],
+            ["Docker Engine / Context", f"Docker Desktop Engine {wsl_receipt.get('docker_engine', '29.7.2')} (desktop-linux; docker.exe + wslpath in WSL2 without socket mount)"],
+            ["Python / Node Runtime", f"Windows Python {env_info.get('python', '3.12.10')} · WSL2 Python {wsl_receipt.get('python', '3.12.3')} · Node.js v24 / Linux Vite verified"],
+            ["Worker Image & Policy", f"{env_info.get('worker_image', 'sandbox-lab-worker:v1')} ({str(wsl_receipt.get('worker_image_id', 'sha256:verified'))[:24]}...) · {env_info.get('policy_version', 'sandbox-policy-v1')}"],
+            ["LLM Integration Model", f"{ts_prov.get('provider', 'deepseek')} ({live_model_name}; configured via terminal env vars, never .env auto-loaded or passed to MCP)"],
+            ["Evidence Locations", "deliverables/evidence/evidence_bundle.json (Run 012), test_summary.json, linux_wsl_receipt.json, junit/*.xml"],
+            [f"Source Fingerprint ({file_count} files)", f"{source_fp}"],
+            ["VKU Format Standard", "A4 (21.0 × 29.7 cm); margins top/bottom/right 2 cm, left 3 cm; Times New Roman 13 pt body aligned with VKU guidelines [8]."],
+        ],
+        [4.8, 11.2],
+    )
+
+    _add_table_caption(doc, "Table A.2: Locked Open-Source Dependencies and Licenses")
+    _add_table(
+        doc,
+        ["Component", "Version & License", "Role in System"],
+        [
+            ["Nginx (nginx:1.27-alpine)", "1.27-alpine · 2-clause BSD", "HTTP lab service & structured JSONL access log"],
+            ["Alpine + Python (worker)", "3.21 / 3.12 · MIT / PSF", "Ephemeral non-root sandbox worker runtime"],
+            ["FastAPI / Pydantic / Uvicorn", f"{versions.get('fastapi', '?')} / {versions.get('pydantic', '?')} / {versions.get('uvicorn', '?')} · MIT / MIT / BSD-3-Clause", "Backend REST API, contracts & Asynchronous Server Gateway Interface (ASGI) server"],
+            ["MCP Python SDK (mcp)", f"{versions.get('mcp', '?')} · MIT", "Official FastMCP server & stdio ClientSession"],
+            ["React / TypeScript / Vite", f"{versions.get('react', '?')} / {versions.get('typescript', '?')} / {versions.get('vite', '?')} · MIT / Apache-2.0 / MIT", "Operator Web UI toolchain"],
+            ["pytest / Playwright", f"{versions.get('pytest', '?')} / {versions.get('playwright', '?')} · MIT / Apache-2.0", "Unit, integration, and browser E2E test suites"],
+        ],
+        [4.5, 4.8, 6.7],
+    )
+
+    _add_table_caption(doc, "Table A.3: Group Member Roles and Authored Modules")
+    _add_table(
+        doc,
+        ["Member", "Primary Scope", "Authored Modules"],
+        [
+            ["Member A", "Linux, Nginx, Worker Image & Isolation Scripts", "infra/*, worker/*, backend/app/sandbox.py, checks.py, scripts/*.sh"],
+            ["Member B", "MCP Server/Client, Agent Loop & Storage", "backend/app/mcp_server.py, mcp_client.py, agent.py, store.py, snapshots.py, traffic.py, api.py"],
+            ["Member C", "Operator Web UI, E2E Quality Assurance (QA) & Packaging", "web/src/*, tests/e2e/*, README.md, docs/*, scripts/build_release.py, scripts/release/*"],
+        ],
+        [3.0, 5.2, 7.8],
+    )
+
+    # --- REFERENCES (After Appendix A, alphabetically sorted per VKU general guidelines [8]) ---
+    _add_heading(doc, "REFERENCES", level=1)
     refs = [
-        "[1] Docker Inc., 'Docker Engine Security', Docker Documentation. https://docs.docker.com/engine/security/",
+        "[1] Anthropic / Model Context Protocol, 'MCP Architecture Overview', 2025. https://modelcontextprotocol.io/docs/learn/architecture",
         "[2] Docker Inc., 'Bind Mounts (readonly option)', Docker Documentation. https://docs.docker.com/engine/storage/bind-mounts/",
-        "[3] Docker Inc., 'Running Containers & Resource Constraints', Docker Documentation. https://docs.docker.com/engine/containers/run/",
-        "[4] Docker Inc., 'Docker Desktop WSL 2 Backend', Docker Documentation. https://docs.docker.com/desktop/features/wsl/",
-        "[5] Anthropic / Model Context Protocol, 'MCP Architecture Overview', 2025. https://modelcontextprotocol.io/docs/learn/architecture",
+        "[3] Docker Inc., 'Docker Desktop WSL 2 Backend', Docker Documentation. https://docs.docker.com/desktop/features/wsl/",
+        "[4] Docker Inc., 'Docker Engine Security', Docker Documentation. https://docs.docker.com/engine/security/",
+        "[5] Docker Inc., 'Running Containers and Resource Constraints', Docker Documentation. https://docs.docker.com/engine/containers/run/",
         "[6] Nginx Inc., 'Module ngx_http_log_module', Nginx Documentation. https://nginx.org/en/docs/http/ngx_http_log_module.html",
-        "[7] VKU Academic Affairs, 'Project Report Templates (KHMT)', https://daotao.vku.udn.vn/bieu-mau.",
+        "[7] Object Management Group (OMG), 'Unified Modeling Language (UML) Version 2.5.1', 2017. https://www.omg.org/spec/UML/2.5.1",
+        "[8] VKU Academic Affairs, 'Project Report Guidelines and KHMT Templates', Vietnam-Korea University of ICT. https://daotao.vku.udn.vn/bieu-mau",
     ]
     for r in refs:
-        _body(doc, r)
-
-    doc.add_heading("APPENDIX A: VERIFIED OSS VERSIONS AND GROUP CONTRIBUTION", level=1)
-    _add_table(
-        doc,
-        ["Component / Package", "Locked Version", "License / Role"],
-        [
-            ["Nginx (nginx:1.27-alpine)", "1.27-alpine", "2-clause BSD · HTTP lab target & JSONL access log"],
-            ["Alpine Linux + Python (worker)", "3.21 / 3.12", "MIT / PSF · Ephemeral non-root sandbox worker"],
-            ["FastAPI / Pydantic / Uvicorn", f"{versions.get('fastapi', '?')} / {versions.get('pydantic', '?')} / {versions.get('uvicorn', '?')}", "MIT (FastAPI, Pydantic) / BSD-3-Clause (Uvicorn) · Backend REST API & contracts"],
-            ["MCP Python SDK (mcp)", versions.get("mcp", "?"), "MIT · Official FastMCP server & stdio ClientSession"],
-            ["React / TypeScript / Vite", f"{versions.get('react', '?')} / {versions.get('typescript', '?')} / {versions.get('vite', '?')}", "MIT (React, Vite) / Apache-2.0 (TypeScript) · Web Operator UI"],
-            ["pytest / Playwright", f"{versions.get('pytest', '?')} / {versions.get('playwright', '?')}", "MIT / Apache-2.0 · Unit, integration, E2E & visual checks"],
-        ],
-        [5.5, 3.8, 6.7],
-    )
-    _add_table(
-        doc,
-        ["Member", "Primary Ownership", "Verified Deliverables"],
-        [
-            ["Member A", "Linux / Nginx / Worker / Policy Scripts", "infra/*, worker/*, backend/app/sandbox.py, checks.py, scripts/*"],
-            ["Member B", "MCP / Agent / API / Snapshot Storage", "backend/app/mcp_server.py, mcp_client.py, agent.py, store.py, snapshots.py, traffic.py, api.py"],
-            ["Member C", "Web Operator UI / E2E / Documentation", "web/src/*, tests/e2e/*, README.md, docs/architecture.md, docs/demo.md, report & slides"],
-        ],
-        [3.0, 5.5, 7.5],
-    )
+        _ref_item(doc, r)
 
     DELIV.mkdir(parents=True, exist_ok=True)
     out_docx = DELIV / "report.docx"
@@ -679,15 +1068,39 @@ def _convert_docx_to_pdf(docx_path: Path, pdf_out_dir: Path) -> Path:
 def _extract_heading_pages(pdf_path: Path) -> dict[str, int]:
     import fitz
 
-    # Front matter sections (LIST OF ABBREVIATIONS, LIST OF FIGURES AND TABLES, INTRODUCTION) remain unnumbered ("—") in ToC.
-    headings = [
+    targets = [
         "Chapter 1. TECHNICAL BACKGROUND",
+        "1.1. Linux Container Isolation Primitives",
+        "1.2. Docker Desktop Execution on Windows and WSL2",
+        "1.3. Model Context Protocol and Nginx Access Logging",
         "Chapter 2. SYSTEM DESIGN",
+        "2.1. Architecture and Trust Boundaries",
+        "2.2. Threat Model and Isolation Decisions",
+        "2.3. Data Contracts and Worker Sandbox Policy",
         "Chapter 3. IMPLEMENTATION",
+        "3.1. End-to-End Lifecycle of a Traffic Run",
+        "3.2. MCP Tool Execution, Snapshot Pinning, and Count Verification",
+        "3.3. Operator Interface and Snapshot Inspection",
         "Chapter 4. EVALUATION",
+        "4.1. Experimental Environment and Evidence Sources",
+        "4.2. Control-Paired Isolation Experiments and Verdict Analysis",
+        "4.3. Automated Test Suite Results and Scope Limitations",
         "CONCLUSION",
+        "APPENDIX A: ENVIRONMENT, TEST INVENTORY & CONTRIBUTIONS",
         "REFERENCES",
-        "APPENDIX A: VERIFIED OSS VERSIONS AND GROUP CONTRIBUTION",
+        "Figure 2.1",
+        "Figure 3.1",
+        "Figure 3.2",
+        "Figure 3.3",
+        "Figure 4.1",
+        "Table 2.1",
+        "Table 2.2",
+        "Table 3.1",
+        "Table 4.1",
+        "Table 4.2",
+        "Table A.1",
+        "Table A.2",
+        "Table A.3",
     ]
     found: dict[str, int] = {}
     with fitz.open(str(pdf_path)) as doc:
@@ -695,12 +1108,17 @@ def _extract_heading_pages(pdf_path: Path) -> dict[str, int]:
             raw_text = page.get_text("text")
             footer_match = re.search(r"\bPage\s+(\d+)\b", raw_text)
             if not footer_match:
-                continue  # Skip unnumbered Section 1 (Cover, ToC, Front Matter, Introduction)
+                continue  # Skip unnumbered Section 1 (Cover, Comments, ToC, Front Matter, Introduction)
             printed_page = int(footer_match.group(1))
             txt = " ".join(raw_text.split())
-            for h in headings:
-                if h not in found and h in txt:
-                    found[h] = printed_page
+            for label in targets:
+                if label in found:
+                    continue
+                if label.startswith(("Figure ", "Table ")):
+                    if f"{label}:" in txt:
+                        found[label] = printed_page
+                elif label in txt:
+                    found[label] = printed_page
     return found
 
 
@@ -714,6 +1132,7 @@ def build_report_with_real_toc() -> tuple[Path, Path]:
     if verify_pages != toc_pages:
         pass3_docx = build_report(toc_pages=verify_pages)
         pdf_path = _convert_docx_to_pdf(pass3_docx, DELIV)
+        pass2_docx = pass3_docx
     print("Verified exact PDF ToC pages:", _extract_heading_pages(pdf_path))
     return pass2_docx, pdf_path
 

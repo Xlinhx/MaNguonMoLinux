@@ -1,8 +1,8 @@
 {
   "provenance": {
-    "source_fingerprint": "69b253596e108e86258b1f1d48bc7b204ffbcf1a08ca81a2ec3ecb93b3aa2596",
+    "source_fingerprint": "3c06b59abb9aef2a6034aa6df64718a7e5cefa11cd7311a0b575a598f49c9db9",
     "manifest_files": 70,
-    "generated_at": "2026-11-18T20:16:35Z",
+    "generated_at": "2026-11-18T20:46:19Z",
     "provider": "deepseek",
     "model": "deepseek-chat"
   },

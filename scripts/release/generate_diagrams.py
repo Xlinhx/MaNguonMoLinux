@@ -9,214 +9,387 @@ OUT_DIR = Path(__file__).resolve().parents[2] / "deliverables" / "assets"
 
 def _box(
     ax,
-    x,
-    y,
-    w,
-    h,
-    title,
-    subtitle="",
-    fc="#FFFFFF",
-    ec="#14283B",
-    lw=1.6,
-    title_color="#14283B",
-    sub_color="#40566B",
-    fontsize=10.2,
-):
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    title: str,
+    subtitle: str = "",
+    *,
+    fc: str = "#FFFFFF",
+    ec: str = "#14283B",
+    lw: float = 1.6,
+    ls: str = "-",
+    title_color: str = "#14283B",
+    sub_color: str = "#40566B",
+    fontsize: float = 9.4,
+    sub_fontsize: float = 7.4,
+) -> None:
     patch = FancyBboxPatch(
         (x, y),
         w,
         h,
-        boxstyle="round,pad=0.0,rounding_size=0.018",
+        boxstyle="round,pad=0.0,rounding_size=0.015",
         facecolor=fc,
         edgecolor=ec,
         linewidth=lw,
+        linestyle=ls,
     )
     ax.add_patch(patch)
     if subtitle:
-        ax.text(x + w / 2, y + h * 0.67, title, ha="center", va="center", fontsize=fontsize, fontweight="bold", color=title_color, family="DejaVu Sans")
-        ax.text(x + w / 2, y + h * 0.30, subtitle, ha="center", va="center", fontsize=fontsize - 2.1, color=sub_color, family="DejaVu Sans")
+        ax.text(
+            x + w / 2,
+            y + h * 0.69,
+            title,
+            ha="center",
+            va="center",
+            fontsize=fontsize,
+            fontweight="bold",
+            color=title_color,
+            family="DejaVu Sans",
+        )
+        ax.text(
+            x + w / 2,
+            y + h * 0.30,
+            subtitle,
+            ha="center",
+            va="center",
+            fontsize=sub_fontsize,
+            color=sub_color,
+            family="DejaVu Sans",
+            linespacing=1.28,
+        )
     else:
-        ax.text(x + w / 2, y + h / 2, title, ha="center", va="center", fontsize=fontsize, fontweight="bold", color=title_color, family="DejaVu Sans")
+        ax.text(
+            x + w / 2,
+            y + h / 2,
+            title,
+            ha="center",
+            va="center",
+            fontsize=fontsize,
+            fontweight="bold",
+            color=title_color,
+            family="DejaVu Sans",
+        )
 
 
-def _arrow(ax, x1, y1, x2, y2, label="", color="#0065C9", rad=0.0, lx_off=0.0, ly_off=0.024):
+def _arrow(
+    ax,
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+    label: str = "",
+    *,
+    color: str = "#0065C9",
+    ls: str = "-",
+    rad: float = 0.0,
+    lx: float | None = None,
+    ly: float | None = None,
+    lx_off: float = 0.0,
+    ly_off: float = 0.020,
+    fontsize: float = 7.5,
+) -> None:
     arr = FancyArrowPatch(
         (x1, y1),
         (x2, y2),
-        arrowstyle="-|>,head_length=6.5,head_width=4.2",
+        arrowstyle="-|>",
+        mutation_scale=13,
         color=color,
-        linewidth=1.8,
+        linewidth=1.55,
+        linestyle=ls,
         connectionstyle=f"arc3,rad={rad}",
     )
     ax.add_patch(arr)
     if label:
-        mx = (x1 + x2) / 2 + lx_off
-        my = (y1 + y2) / 2 + ly_off
+        mx = lx if lx is not None else ((x1 + x2) / 2 + lx_off)
+        my = ly if ly is not None else ((y1 + y2) / 2 + ly_off)
         ax.text(
             mx,
             my,
             label,
             ha="center",
             va="center",
-            fontsize=8.2,
-            color="#14283B",
+            fontsize=fontsize,
+            color=color if color != "#475569" else "#14283B",
             fontweight="bold",
-            bbox=dict(boxstyle="round,pad=0.18", fc="#FFFFFF", ec="none", alpha=0.92),
+            family="DejaVu Sans",
+            bbox=dict(boxstyle="round,pad=0.14", fc="#FFFFFF", ec="none", alpha=0.94),
         )
 
 
 def draw_architecture() -> None:
-    fig, ax = plt.subplots(figsize=(12.8, 6.6), dpi=220)
+    fig, ax = plt.subplots(figsize=(13.6, 7.0), dpi=240)
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
     ax.axis("off")
     fig.patch.set_facecolor("#FFFFFF")
 
-    # Zone backgrounds
+    # Zone 2: Trusted Host Boundary (center)
     ax.add_patch(
         FancyBboxPatch(
-            (0.245, 0.08),
-            0.460,
-            0.85,
-            boxstyle="round,pad=0.0,rounding_size=0.02",
+            (0.268, 0.04),
+            0.418,
+            0.92,
+            boxstyle="round,pad=0.0,rounding_size=0.018",
             facecolor="#F4FAFD",
-            edgecolor="#8DC3E6",
-            linewidth=1.4,
+            edgecolor="#0065C9",
+            linewidth=1.5,
             linestyle="--",
         )
     )
     ax.text(
-        0.475,
-        0.90,
-        "TRUSTED HOST (FastAPI + Agent + MCP + Runner)",
+        0.477,
+        0.930,
+        "TRUSTED HOST (Python Backend · SQLite WAL · Docker CLI)",
         ha="center",
         va="center",
-        fontsize=8.3,
+        fontsize=8.0,
         fontweight="bold",
         color="#0065C9",
+        family="DejaVu Sans",
     )
 
+    # Zone 3A: Isolated Worker Container (top-right, strictly no network)
     ax.add_patch(
         FancyBboxPatch(
-            (0.740, 0.08),
-            0.248,
-            0.85,
-            boxstyle="round,pad=0.0,rounding_size=0.02",
-            facecolor="#FFF8EB",
-            edgecolor="#E6A23C",
+            (0.752, 0.49),
+            0.238,
+            0.47,
+            boxstyle="round,pad=0.0,rounding_size=0.018",
+            facecolor="#FFFBEB",
+            edgecolor="#B45309",
             linewidth=1.6,
             linestyle="-",
         )
     )
-    ax.text(0.864, 0.90, "ISOLATED WORKER / LAB", ha="center", va="center", fontsize=9.0, fontweight="bold", color="#92400E")
+    ax.text(
+        0.871,
+        0.930,
+        "ISOLATED WORKER (--network none)",
+        ha="center",
+        va="center",
+        fontsize=8.0,
+        fontweight="bold",
+        color="#92400E",
+        family="DejaVu Sans",
+    )
 
-    # Left column (External / Untrusted Producers)
-    _box(ax, 0.015, 0.67, 0.195, 0.17, "Web Operator UI", "React 19 / TypeScript / Vite\n127.0.0.1:5173", fc="#EDF8FC", ec="#0065C9")
-    _box(ax, 0.015, 0.39, 0.195, 0.17, "LLM Provider API", "DeepSeek / OpenAI / Gemini\n(Prompt & JSON Tools Only)", fc="#F8FAFC", ec="#64748B")
-    _box(ax, 0.015, 0.11, 0.195, 0.17, "Nginx Lab Service", "nginx:1.27-alpine\n:18080 -> access.jsonl", fc="#FFFFFF", ec="#40566B")
+    # Zone 3B: Control & Lab Test Network (bottom-right, separate Docker bridge network)
+    ax.add_patch(
+        FancyBboxPatch(
+            (0.752, 0.04),
+            0.238,
+            0.35,
+            boxstyle="round,pad=0.0,rounding_size=0.018",
+            facecolor="#F8FAFC",
+            edgecolor="#475569",
+            linewidth=1.5,
+            linestyle="-.",
+        )
+    )
+    ax.text(
+        0.871,
+        0.368,
+        "LAB NETWORK (sandbox_lab_net)",
+        ha="center",
+        va="center",
+        fontsize=8.0,
+        fontweight="bold",
+        color="#334155",
+        family="DejaVu Sans",
+    )
 
-    # Middle Trusted Host columns
-    _box(ax, 0.275, 0.67, 0.190, 0.17, "FastAPI + Agent Loop", "127.0.0.1:18000 · SQLite WAL\n30s Deadline & MCP Gate", fc="#FFFFFF", ec="#0065C9")
-    _box(ax, 0.505, 0.67, 0.190, 0.17, "Snapshot Store", "<run_id>/rev-XXXX/access.jsonl\nSHA-256 Pinned", fc="#FFFFFF", ec="#0065C9")
-    _box(ax, 0.275, 0.39, 0.190, 0.17, "MCP Server (stdio)", "3 Typed Tools (mcp==1.28.1)\nUUID & SHA-256 Validation", fc="#FFFFFF", ec="#0065C9")
-    _box(ax, 0.505, 0.39, 0.190, 0.17, "Policy Runner", "docker run (argv, shell=False)\n10s Timeout + rm -f", fc="#FFFFFF", ec="#0065C9")
-    _box(ax, 0.365, 0.11, 0.295, 0.17, "Control Harness", "Isolated ro/rw Copies & Net Control\nVerdict: Pass / Fail / Error", fc="#E8F5FC", ec="#0065C9")
-
-    # Right Isolated Worker column
+    # Left column: External Actors & Lab Web Service
     _box(
-        ax,
-        0.758,
-        0.45,
-        0.215,
-        0.39,
-        "Docker Worker\nsandbox-lab-worker:v1",
-        "UID/GID 10001:10001\n--read-only rootfs\n--network none | --cap-drop ALL\nno-new-privileges\n128m RAM | 64 PIDs | 0.5 CPU\n(Shared Docker VM Kernel)",
-        fc="#FFFFFF",
-        ec="#B45309",
-        fontsize=9.4,
+        ax, 0.010, 0.72, 0.194, 0.17,
+        "Web Operator UI",
+        "Browser Console\n(Traffic · Agent · Checks · Logs)",
+        fc="#EDF8FC", ec="#0065C9", fontsize=9.4, sub_fontsize=7.6,
     )
     _box(
-        ax,
-        0.758,
-        0.11,
-        0.215,
-        0.17,
+        ax, 0.010, 0.41, 0.194, 0.20,
+        "External LLM API",
+        "Prompt, 3 Tool Schemas &\nBounded Tool JSON Only",
+        fc="#F8FAFC", ec="#64748B", fontsize=9.4, sub_fontsize=7.6,
+    )
+    _box(
+        ax, 0.010, 0.08, 0.194, 0.20,
+        "Nginx Lab Service",
+        "Serves /demo & /missing\nAppends JSONL Access Log",
+        fc="#FFFFFF", ec="#334155", fontsize=9.4, sub_fontsize=7.6,
+    )
+
+    # Center Trusted Host components (clean 3 rows x 2 columns)
+    _box(
+        ax, 0.286, 0.72, 0.176, 0.17,
+        "FastAPI & Agent Loop",
+        "REST API, 30s Budget,\nNumber & Revision Gate",
+        fc="#FFFFFF", ec="#0065C9", fontsize=9.2, sub_fontsize=7.6,
+    )
+    _box(
+        ax, 0.492, 0.72, 0.176, 0.17,
+        "Snapshot Store",
+        "Immutable JSONL + SHA-256\nPinned per Run / Revision",
+        fc="#FFFFFF", ec="#0065C9", fontsize=9.2, sub_fontsize=7.6,
+    )
+    _box(
+        ax, 0.286, 0.41, 0.176, 0.20,
+        "MCP Stdio Server",
+        "3 Read-Only Log Tools\n(API Keys Stripped)",
+        fc="#FFFFFF", ec="#0065C9", fontsize=9.2, sub_fontsize=7.6,
+    )
+    _box(
+        ax, 0.492, 0.41, 0.176, 0.20,
+        "Trusted Policy Runner",
+        "Spawns & Cleans Workers\n(shell=False · SHA-256)",
+        fc="#FFFFFF", ec="#0065C9", fontsize=9.2, sub_fontsize=7.6,
+    )
+    _box(
+        ax, 0.286, 0.08, 0.176, 0.20,
+        "Traffic Service",
+        "Dispatches HTTP Batches\n& Reconciles JSONL Logs",
+        fc="#E8F5FC", ec="#0065C9", fontsize=9.2, sub_fontsize=7.6,
+    )
+    _box(
+        ax, 0.492, 0.08, 0.176, 0.20,
+        "Control Harness",
+        "Isolated ro/rw Copies &\nPaired Verdict Logic",
+        fc="#E8F5FC", ec="#0065C9", fontsize=9.2, sub_fontsize=7.6,
+    )
+
+    # Right Zone boxes
+    _box(
+        ax, 0.768, 0.54, 0.206, 0.34,
+        "Docker Worker Container",
+        "Ephemeral Non-Root Process\nRead-Only Rootfs + /tmp\nSingle Readonly Snapshot Mount\n(Shares Host/VM Linux Kernel)",
+        fc="#FFFFFF", ec="#B45309", fontsize=9.2, sub_fontsize=7.6,
+    )
+    _box(
+        ax, 0.768, 0.23, 0.155, 0.105,
+        "Control Worker",
+        "sandbox_lab_net",
+        fc="#FFFFFF", ec="#0065C9", fontsize=8.8, sub_fontsize=7.5,
+    )
+    _box(
+        ax, 0.768, 0.06, 0.206, 0.100,
         "Internal Test Service",
-        "sandbox_lab_net :8081 (Host :18081)\nControl Reachable / Worker Blocked",
-        fc="#FEF2F2",
-        ec="#991B1B",
-        fontsize=9.4,
+        "GET /ping -> HTTP 200 JSON",
+        fc="#FEF2F2", ec="#991B1B", fontsize=8.8, sub_fontsize=7.5,
     )
 
-    # Arrows reflecting clean non-overlapping topology
-    _arrow(ax, 0.210, 0.755, 0.275, 0.755, "REST", ly_off=0.028)
-    _arrow(ax, 0.210, 0.510, 0.275, 0.690, "Tool Proposals", rad=0.0, lx_off=-0.032, ly_off=0.032)
-    # Route Nginx traffic/logs cleanly through corridor x=0.21..0.275 without crossing LLM box
-    _arrow(ax, 0.305, 0.670, 0.210, 0.240, "HTTP & JSONL", rad=-0.12, lx_off=-0.028, ly_off=-0.135)
-    _arrow(ax, 0.465, 0.755, 0.505, 0.755, "")
-    _arrow(ax, 0.370, 0.670, 0.370, 0.560, "MCP stdio\n(no LLM keys)", lx_off=0.064, ly_off=0.0)
-    _arrow(ax, 0.465, 0.475, 0.505, 0.475, "")
-    _arrow(ax, 0.600, 0.670, 0.600, 0.560, "SHA-256", lx_off=0.050, ly_off=0.0)
-    _arrow(ax, 0.695, 0.740, 0.758, 0.700, "readonly", color="#0F766E", ly_off=0.028)
-    _arrow(ax, 0.695, 0.480, 0.758, 0.530, "spawn", color="#B45309", ly_off=0.028)
-    _arrow(ax, 0.660, 0.195, 0.758, 0.195, "Control Net", color="#0065C9", ly_off=0.028)
-    _arrow(ax, 0.865, 0.450, 0.865, 0.280, "BLOCKED", color="#DC2626", lx_off=0.055, ly_off=0.0)
+    # Arrows: clean orthogonal / non-crossing paths with white label backplates
+    _arrow(ax, 0.204, 0.805, 0.286, 0.805, "REST", lx=0.245, ly=0.835, fontsize=7.8)
+    _arrow(ax, 0.286, 0.748, 0.204, 0.575, "Prompt + JSON", color="#475569", rad=0.14, lx=0.236, ly=0.690, fontsize=7.6)
+    _arrow(ax, 0.204, 0.495, 0.286, 0.715, "Tool\nProposals", color="#0065C9", rad=0.14, lx=0.238, ly=0.545, fontsize=7.5)
 
-    ax.set_title("Sandbox Lab Architecture & Trust Boundaries (Topic 17)", fontsize=13.5, fontweight="bold", color="#14283B", pad=10)
+    _arrow(ax, 0.286, 0.225, 0.204, 0.225, "HTTP", color="#0065C9", lx=0.245, ly=0.252, fontsize=7.8)
+    _arrow(ax, 0.204, 0.135, 0.286, 0.135, "JSONL", color="#0F766E", ls="--", lx=0.245, ly=0.105, fontsize=7.8)
+
+    # Traffic Service -> Snapshot Store along center gap x=0.477; label placed cleanly in open lower corridor y=0.335
+    ax.plot([0.374, 0.477, 0.477], [0.280, 0.335, 0.765], color="#0F766E", linestyle="--", linewidth=1.45)
+    _arrow(ax, 0.477, 0.765, 0.492, 0.765, "Freeze", color="#0F766E", ls="--", lx=0.477, ly=0.335, fontsize=7.6)
+
+    # Host internal links
+    _arrow(ax, 0.462, 0.805, 0.492, 0.805, "")
+    _arrow(ax, 0.374, 0.720, 0.374, 0.610, "MCP stdio", lx=0.418, ly=0.665, fontsize=7.6)
+    _arrow(ax, 0.462, 0.510, 0.492, 0.510, "")
+    _arrow(ax, 0.580, 0.720, 0.580, 0.610, "SHA-256", lx=0.625, ly=0.665, fontsize=7.6)
+    _arrow(ax, 0.580, 0.280, 0.580, 0.410, "Checks", color="#0065C9", lx=0.618, ly=0.345, fontsize=7.6)
+
+    # Host -> Docker Worker (label centered cleanly in white gap x=0.718)
+    _arrow(ax, 0.668, 0.790, 0.768, 0.770, "readonly\nmount", color="#0F766E", lx=0.718, ly=0.822, fontsize=7.6)
+    _arrow(ax, 0.668, 0.545, 0.768, 0.605, "docker\nrun / rm -f", color="#B45309", lx=0.719, ly=0.510, fontsize=7.2)
+
+    # Control Harness -> Control Worker -> Test Service
+    _arrow(ax, 0.668, 0.220, 0.768, 0.275, "Control", color="#0065C9", lx=0.718, ly=0.272, fontsize=7.6)
+    _arrow(ax, 0.835, 0.230, 0.835, 0.160, "HTTP 200", color="#0F766E", lx=0.835, ly=0.195, fontsize=7.5)
+
+    # Isolated Worker -> Internal Test Service blocked arrow cleanly outside Control Worker box
+    _arrow(ax, 0.948, 0.540, 0.948, 0.160, "BLOCKED\n(--network none)", color="#DC2626", ls="--", lx=0.922, ly=0.438, fontsize=7.4)
+
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    fig.savefig(OUT_DIR / "architecture.png", bbox_inches="tight", dpi=220)
+    fig.savefig(OUT_DIR / "architecture.png", bbox_inches="tight", dpi=240)
     plt.close(fig)
 
 
 def draw_mcp_flow() -> None:
-    fig, ax = plt.subplots(figsize=(12.2, 6.0), dpi=220)
-    ax.set_xlim(-0.02, 1.02)
-    ax.set_ylim(0, 1)
+    # Strict UML 2.5.1 sequence notation: solid -|> for synchronous calls, dashed -> for returns.
+    fig, ax = plt.subplots(figsize=(14.4, 8.4), dpi=240)
+    ax.set_xlim(-0.04, 1.03)
+    ax.set_ylim(-0.02, 1.01)
     ax.axis("off")
     fig.patch.set_facecolor("#FFFFFF")
 
     actors = [
-        (0.08, "Operator UI"),
-        (0.29, "Agent Loop"),
-        (0.50, "MCP Server"),
-        (0.71, "Policy Runner"),
-        (0.92, "Linux Worker"),
+        (0.080, "Operator UI"),
+        (0.255, "Agent Loop"),
+        (0.430, "LLM Provider"),
+        (0.605, "MCP Server\n(stdio)"),
+        (0.780, "Policy Runner"),
+        (0.945, "Docker Worker"),
     ]
     for x, label in actors:
-        _box(ax, x - 0.085, 0.85, 0.17, 0.095, label, fc="#EDF8FC", ec="#0065C9", fontsize=10.2)
-        ax.plot([x, x], [0.05, 0.85], color="#CBD5E1", linestyle="--", linewidth=1.4, zorder=0)
+        _box(ax, x - 0.070, 0.91, 0.140, 0.078, label, fc="#EDF8FC", ec="#0065C9", fontsize=9.2)
+        ax.plot([x, x], [0.00, 0.91], color="#94A3B8", linestyle="--", linewidth=1.2, zorder=0)
 
-    steps = [
-        (0.76, 0.08, 0.29, '1. Ask "How many 404s?" (Pin snapshot_id, Rev 1)', "#14283B"),
-        (0.66, 0.29, 0.50, "2. MCP call_tool(count_status_codes, run_id, snapshot_id)", "#0065C9"),
-        (0.56, 0.50, 0.71, "3. Validate UUIDs & Resolve rev-0001/access.jsonl SHA-256", "#0065C9"),
-        (0.46, 0.71, 0.92, "4. docker run (--read-only --network none)", "#B45309"),
-        (0.36, 0.92, 0.71, "5. JSON {total_requests:10, status_200:7, status_404:3} + rm -f", "#0F766E"),
-        (0.26, 0.71, 0.50, "6. Verified ToolResult returned via MCP stdio", "#0065C9"),
-        (0.16, 0.50, 0.29, "7. Assert completed MCP call (run_id, snapshot_id) + Model Reply", "#0065C9"),
-        (0.07, 0.29, 0.08, '8. Answer "3 of 10" + Trace Link (Rev 1)', "#14283B"),
-    ]
-    for y, x1, x2, text, color in steps:
-        arr = FancyArrowPatch((x1, y), (x2, y), arrowstyle="-|>,head_length=6.5,head_width=4", color=color, linewidth=1.8)
+    def _msg(y: float, x1: float, x2: float, text: str, color: str, is_reply: bool = False, lx: float | None = None, fs: float = 8.0) -> None:
+        arr = FancyArrowPatch(
+            (x1, y),
+            (x2, y),
+            arrowstyle="->" if is_reply else "-|>",
+            mutation_scale=13,
+            color=color,
+            linewidth=1.55,
+            linestyle="--" if is_reply else "-",
+        )
         ax.add_patch(arr)
         ax.text(
-            (x1 + x2) / 2,
-            y + 0.030,
+            lx if lx is not None else (x1 + x2) / 2,
+            y + 0.022,
             text,
             ha="center",
             va="center",
-            fontsize=8.6,
+            fontsize=fs,
             fontweight="bold",
             color=color,
-            bbox=dict(boxstyle="round,pad=0.16", fc="#FFFFFF", ec="none", alpha=0.95),
+            family="DejaVu Sans",
+            bbox=dict(boxstyle="round,pad=0.14", fc="#FFFFFF", ec="none", alpha=0.96),
         )
 
-    ax.set_title("MCP Tool Execution & Snapshot Pinning Sequence", fontsize=13.5, fontweight="bold", color="#14283B", pad=8)
-    fig.savefig(OUT_DIR / "mcp-sequence.png", bbox_inches="tight", dpi=220)
+    _msg(0.855, 0.080, 0.255, "1. POST /questions -> job_id (queues async Agent task)", "#14283B", is_reply=False, lx=0.220, fs=7.9)
+    _msg(0.788, 0.255, 0.430, "2. Pin Rev 1 sha256; Question + 3 tool schemas ->", "#0065C9", is_reply=False, fs=7.9)
+    _msg(0.720, 0.430, 0.255, "3. Tool proposal: count_status_codes(run_id)", "#475569", is_reply=True, fs=7.9)
+    _msg(0.652, 0.255, 0.605, "4. call_tool(count_status_codes, run_id, snapshot_id) [keys stripped]", "#0065C9", is_reply=False, fs=7.9)
+    _msg(0.584, 0.605, 0.780, "5. Validate UUIDs & execute_tool(snapshot_id)", "#0065C9", is_reply=False, fs=7.9)
+    _msg(0.516, 0.780, 0.945, "6. docker run --read-only --network none (readonly snapshot)", "#B45309", is_reply=False, lx=0.800, fs=7.8)
+    _msg(0.448, 0.945, 0.780, "7. stdout JSON {total_requests, status_200, status_404, snapshot_sha256}", "#0F766E", is_reply=True, lx=0.770, fs=7.6)
+
+    # Self-action box centered cleanly over Policy Runner lifeline with generous internal margin
+    _box(
+        ax, 0.665, 0.352, 0.230, 0.056,
+        "8. Verify sha256 & docker rm -f",
+        fc="#FFFBEB", ec="#B45309", lw=1.2, fontsize=8.1,
+    )
+
+    _msg(0.305, 0.780, 0.605, "9. WorkerExecutionResult", "#0F766E", is_reply=True, fs=8.0)
+    _msg(0.240, 0.605, 0.255, "10. Verified ToolResult via MCP stdio", "#0065C9", is_reply=True, fs=8.0)
+    _msg(0.175, 0.255, 0.430, "11. Bounded JSON result", "#0065C9", is_reply=False, fs=7.5)
+    _msg(0.110, 0.430, 0.255, "12. Draft answer text", "#475569", is_reply=True, fs=7.9)
+
+    # Self-check box centered cleanly over Agent Loop lifeline without touching borders
+    _box(
+        ax, 0.145, 0.045, 0.220, 0.046,
+        "13. Verify rev & 404/total counts",
+        fc="#E8F5FC", ec="#0065C9", lw=1.1, fontsize=7.9,
+    )
+    _msg(0.005, 0.255, 0.080, '14. GET /jobs/{id} & /messages -> "3 404s / 10" (Rev 1)', "#14283B", is_reply=True, lx=0.220, fs=7.9)
+
+    fig.savefig(OUT_DIR / "mcp-sequence.png", bbox_inches="tight", dpi=240)
     plt.close(fig)
 
 
 if __name__ == "__main__":
     draw_architecture()
     draw_mcp_flow()
-    print("Diagrams regenerated.")
+    print("Diagrams regenerated cleanly.")
