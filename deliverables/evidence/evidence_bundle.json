@@ -409,18 +409,18 @@
     }
   ],
   "provenance": {
-    "source_fingerprint": "dd2b4d593bb861bfce73627e6110031ed191659e1b4c015f96987f4ce1e8a745",
+    "source_fingerprint": "674b687f9fc175842a0ada55c3d077bfcf2aea17542be73a02c67d8f96fb1dcc",
     "manifest_files": 70,
     "capture_run": "Run 012",
     "live_key_active_in_final_ci": true,
     "assets": {
       "architecture.png": {
-        "sha256": "b06057b61c7c864e04417233353b6c6d4c43259b8e1deca393c88ce3a569a994",
-        "bytes": 361808
+        "sha256": "e626cc7b066beac3192e01bea2a04cdf10b9061805275ffd7bdce55872364b29",
+        "bytes": 370637
       },
       "mcp-sequence.png": {
-        "sha256": "f4b90c455a7cf7b5dab84f05d98a3eb61466fba3d48177ca6ea50aa1dd6b4ee9",
-        "bytes": 201462
+        "sha256": "3dff79707010b019fbef6d42b099c3ca6f0c74f77f54cf73b64facdb0fd0a6f5",
+        "bytes": 213705
       },
       "live-traffic-verified.png": {
         "sha256": "110d0a1cf04fd7035ca8b0653d151f435d812cd267f40a55bf7695f634c1d0ab",

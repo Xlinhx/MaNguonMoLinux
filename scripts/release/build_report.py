@@ -113,9 +113,18 @@ def _configure_styles(doc: Document) -> None:
         _set_rfonts(st._element, "Times New Roman")
 
 
-def _add_heading(doc: Document, text: str, level: int = 1, *, centered: bool = False) -> None:
+def _add_heading(
+    doc: Document,
+    text: str,
+    level: int = 1,
+    *,
+    centered: bool = False,
+    page_break_before: bool = False,
+) -> None:
     p = doc.add_heading(level=level)
     p.paragraph_format.keep_with_next = True
+    if page_break_before:
+        p.paragraph_format.page_break_before = True
     if centered:
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     size_pt = {1: 15, 2: 14, 3: 13}.get(level, 13)
@@ -202,8 +211,8 @@ def _add_page_number_footer(section) -> None:
 def _add_toc_table(doc: Document, toc_pages: dict[str, int] | None = None) -> None:
     toc_items: list[tuple[str, int, str]] = [
         ("INSTRUCTOR'S COMMENTS", 1, "—"),
-        ("LIST OF ABBREVIATIONS", 1, "—"),
         ("LIST OF FIGURES AND TABLES", 1, "—"),
+        ("LIST OF ABBREVIATIONS", 1, "—"),
         ("INTRODUCTION", 1, "—"),
         ("Chapter 1. TECHNICAL BACKGROUND", 1, ""),
         ("    1.1. Linux Container Isolation Primitives", 2, "1.1. Linux Container Isolation Primitives"),
@@ -300,7 +309,7 @@ def _add_table(
         p = hdr_cells[idx].paragraphs[0]
         p.paragraph_format.line_spacing = 1.12
         _format_run(p.add_run(h), size_pt=font_pt, bold=True)
-        _set_cell_shading(hdr_cells[idx], "EAEFF5")
+        _set_cell_shading(hdr_cells[idx], "F2F2F2")
         _set_cell_margins(hdr_cells[idx], top=pad_v, bottom=pad_v, left=95, right=95)
 
     for r_idx, row in enumerate(rows):
@@ -463,10 +472,10 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
         if framed:
             tbl_borders = parse_xml(
                 f'<w:tblBorders {nsdecls("w")}>'
-                '<w:top w:val="double" w:sz="12" w:space="0" w:color="1F4E79"/>'
-                '<w:left w:val="double" w:sz="12" w:space="0" w:color="1F4E79"/>'
-                '<w:bottom w:val="double" w:sz="12" w:space="0" w:color="1F4E79"/>'
-                '<w:right w:val="double" w:sz="12" w:space="0" w:color="1F4E79"/>'
+                '<w:top w:val="double" w:sz="12" w:space="0" w:color="111827"/>'
+                '<w:left w:val="double" w:sz="12" w:space="0" w:color="111827"/>'
+                '<w:bottom w:val="double" w:sz="12" w:space="0" w:color="111827"/>'
+                '<w:right w:val="double" w:sz="12" w:space="0" w:color="111827"/>'
                 '<w:insideH w:val="none"/><w:insideV w:val="none"/>'
                 '</w:tblBorders>'
             )
@@ -618,8 +627,8 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
     p_score = doc.add_paragraph()
     p_score.paragraph_format.space_before = Pt(10)
     p_score.paragraph_format.space_after = Pt(18)
-    _format_run(p_score.add_run("5. Score (10-pt scale): "), size_pt=12, bold=True)
-    _format_run(p_score.add_run(".......... / 10    |    Defense Eligibility:   [  ] Approved    [  ] Not Approved"), size_pt=12)
+    _format_run(p_score.add_run("5. Score (10-pt): "), size_pt=12, bold=True)
+    _format_run(p_score.add_run("......... / 10    |    Eligibility:   [  ] Approved    [  ] Not Approved"), size_pt=12)
 
     p_sig = doc.add_paragraph()
     p_sig.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -634,8 +643,43 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
     _add_toc_table(doc, toc_pages=toc_pages)
     doc.add_page_break()
 
-    # --- LIST OF ABBREVIATIONS ---
-    _add_heading(doc, "LIST OF ABBREVIATIONS", level=1)
+    # --- LIST OF FIGURES & LIST OF TABLES (before Abbreviations per VKU KHMT guide) ---
+    fig_titles = [
+        ("Figure 2.1", "UML Deployment and Component Diagram of System Architecture"),
+        ("Figure 3.1", "UML 2.5.1 Sequence Diagram of MCP Tool Execution (Rev 1)"),
+        ("Figure 3.2", f"[Historical Capture · Run 012] Traffic Screen ({req_count} Requests, Revision {snap_rev})"),
+        ("Figure 3.3", f"[Historical Capture · Run 012] Checks Screen Showing {checks_caption_phrase} (Revision {snap_rev})"),
+        ("Figure 4.1", f"[Historical Capture · Run 012] Agent Q&A Across Revisions 1 and 2"),
+    ]
+    tbl_titles = [
+        ("Table 2.1", "Threat Vectors Mapped to System Design Decisions"),
+        ("Table 2.2", "Sandbox Worker Policy Controls (sandbox-policy-v1)"),
+        ("Table 3.1", "Reused Open-Source Components vs. Group-Authored Modules"),
+        ("Table 4.1", "Control-Paired Sandbox Isolation Results and Worker-Only Probes"),
+        ("Table 4.2", f"Automated Verification Summary ({total_passed}/{total_tests} Tests Passed" + (f", {total_skipped} Skipped)" if total_skipped else ")")),
+        ("Table A.1", "Verified Software Environment and Runtime Configuration"),
+        ("Table A.2", "Locked Open-Source Dependencies and Licenses"),
+        ("Table A.3", "Group Member Roles and Authored Modules"),
+    ]
+
+    _add_heading(doc, "LIST OF FIGURES AND TABLES", level=1, centered=True)
+    _add_table_caption(doc, "List of Figures")
+    fig_rows = [
+        [num, title, str(toc_pages[num]) if (toc_pages and num in toc_pages) else "—"]
+        for num, title in fig_titles
+    ]
+    _add_table(doc, ["Figure", "Title", "Page"], fig_rows, [2.4, 12.0, 1.6], font_pt=10, pad_v=36)
+
+    _add_table_caption(doc, "List of Tables")
+    tbl_rows = [
+        [num, title, str(toc_pages[num]) if (toc_pages and num in toc_pages) else "—"]
+        for num, title in tbl_titles
+    ]
+    _add_table(doc, ["Table", "Title", "Page"], tbl_rows, [2.4, 12.0, 1.6], font_pt=10, pad_v=36)
+    doc.add_page_break()
+
+    # --- LIST OF ABBREVIATIONS (after Lists of Figures/Tables per VKU KHMT guide) ---
+    _add_heading(doc, "LIST OF ABBREVIATIONS", level=1, centered=True)
     _add_table(
         doc,
         ["Abbreviation", "Full Term"],
@@ -673,43 +717,8 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
     )
     doc.add_page_break()
 
-    # --- LIST OF FIGURES & LIST OF TABLES (with real printed Page numbers) ---
-    fig_titles = [
-        ("Figure 2.1", "System Architecture and Trust Boundaries"),
-        ("Figure 3.1", "UML Sequence Diagram of MCP Tool Execution (Agent Loop to Docker Worker, Rev 1)"),
-        ("Figure 3.2", f"[Historical Capture · Run 012] Traffic Screen ({req_count} Requests, Revision {snap_rev})"),
-        ("Figure 3.3", f"[Historical Capture · Run 012] Checks Screen Showing {checks_caption_phrase} (Revision {snap_rev})"),
-        ("Figure 4.1", f"[Historical Capture · Run 012] Agent Q&A Across Revisions 1 and 2"),
-    ]
-    tbl_titles = [
-        ("Table 2.1", "Threat Vectors Mapped to System Design Decisions"),
-        ("Table 2.2", "Sandbox Worker Policy Controls (sandbox-policy-v1)"),
-        ("Table 3.1", "Reused Open-Source Components vs. Group-Authored Modules"),
-        ("Table 4.1", "Control-Paired Sandbox Isolation Results and Worker-Only Probes"),
-        ("Table 4.2", f"Automated Verification Summary ({total_passed}/{total_tests} Tests Passed" + (f", {total_skipped} Skipped)" if total_skipped else ")")),
-        ("Table A.1", "Verified Software Environment and Runtime Configuration"),
-        ("Table A.2", "Locked Open-Source Dependencies and Licenses"),
-        ("Table A.3", "Group Member Roles and Authored Modules"),
-    ]
-
-    _add_heading(doc, "LIST OF FIGURES AND TABLES", level=1)
-    _add_table_caption(doc, "List of Figures")
-    fig_rows = [
-        [num, title, str(toc_pages[num]) if (toc_pages and num in toc_pages) else "—"]
-        for num, title in fig_titles
-    ]
-    _add_table(doc, ["Figure", "Title", "Page"], fig_rows, [2.4, 12.0, 1.6], font_pt=10, pad_v=36)
-
-    _add_table_caption(doc, "List of Tables")
-    tbl_rows = [
-        [num, title, str(toc_pages[num]) if (toc_pages and num in toc_pages) else "—"]
-        for num, title in tbl_titles
-    ]
-    _add_table(doc, ["Table", "Title", "Page"], tbl_rows, [2.4, 12.0, 1.6], font_pt=10, pad_v=36)
-    doc.add_page_break()
-
     # --- INTRODUCTION ---
-    _add_heading(doc, "INTRODUCTION", level=1)
+    _add_heading(doc, "INTRODUCTION", level=1, centered=True)
     _body(
         doc,
         "How can an Artificial Intelligence (AI) agent count Hypertext Transfer Protocol (HTTP) 404 responses in an Nginx access log while Linux restricts what its tools can read, write, and access over the network? "
@@ -744,7 +753,7 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
     _add_page_number_footer(sec2)
 
     # --- CHAPTER 1 ---
-    _add_heading(doc, "Chapter 1. TECHNICAL BACKGROUND", level=1)
+    _add_heading(doc, "Chapter 1. TECHNICAL BACKGROUND", level=1, centered=True)
     _body(
         doc,
         "Understanding why Sandbox Lab enforces restrictions beneath MCP requires distinguishing kernel-level Linux isolation primitives from host-level execution environments and application protocols.",
@@ -777,7 +786,7 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
     )
 
     # --- CHAPTER 2 ---
-    _add_heading(doc, "Chapter 2. SYSTEM DESIGN", level=1)
+    _add_heading(doc, "Chapter 2. SYSTEM DESIGN", level=1, centered=True, page_break_before=True)
     _body(
         doc,
         "To answer the central design question without trusting either the external language model or raw Nginx log lines, Sandbox Lab separates proposal, host orchestration, and isolated worker execution across explicit trust zones.",
@@ -800,8 +809,8 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
     _add_figure(
         doc,
         ASSETS / "architecture.png",
-        "Figure 2.1: System Architecture and Trust Boundaries",
-        width_cm=14.4,
+        "Figure 2.1: UML Deployment and Component Diagram of System Architecture",
+        width_cm=13.8,
         verified_assets=verified_assets,
         bundle=export_data,
     )
@@ -828,8 +837,8 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
             ["Resource exhaustion or hung tasks", "Infinite loops, fork storms, or memory spikes", "128 MiB memory ceiling, PID/CPU limits, 64 KiB stream cap, 10s worker timeout, and job-scoped container removal [5]."],
         ],
         [4.0, 4.0, 8.0],
-        font_pt=9.5,
-        pad_v=30,
+        font_pt=9,
+        pad_v=22,
     )
 
     _add_heading(doc, "2.3. Data Contracts and Worker Sandbox Policy", level=2)
@@ -855,7 +864,7 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
     )
 
     # --- CHAPTER 3 ---
-    _add_heading(doc, "Chapter 3. IMPLEMENTATION", level=1)
+    _add_heading(doc, "Chapter 3. IMPLEMENTATION", level=1, centered=True, page_break_before=True)
     _body(
         doc,
         "While Sandbox Lab builds upon open-source infrastructure components (Table 3.1), the traffic state machine, immutable revisioning, MCP validation wrapper, container runner, control harness, and operator interface were authored by the group.",
@@ -885,12 +894,14 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
             ["Operator Console", "React 19, TypeScript, Vite", "Four-screen console, cursor-paginated log viewer, in-memory fixture preview, and mobile bottom sheets."],
         ],
         [3.2, 4.8, 8.0],
+        font_pt=9,
+        pad_v=28,
     )
 
     _add_heading(doc, "3.2. MCP Tool Execution, Snapshot Pinning, and Count Verification", level=2)
     _body(
         doc,
-        "Figure 3.1 traces a user's aggregate count query through the Agent Loop and isolated worker using Unified Modeling Language (UML) sequence notation (solid arrows denote calls; dashed arrows denote returns) [7]. "
+        "Figure 3.1 traces a user's aggregate count query across UML 2.5.1 lifelines and execution specifications inside an interaction frame (sd MCP Tool Execution): solid arrowheads denote synchronous calls, dashed open arrowheads denote asynchronous returns and dynamic worker creation (<<create>>), self-call bars represent local verification, and the final X symbol marks container destruction (<<destroy>>) [7]. "
         "When the operator submits a question, POST /api/runs/{run_id}/questions enqueues an asynchronous background task and returns a trackable job_id; the Agent Loop task then pins the run's active snapshot_id, revision, and SHA-256 digest and opens a 30-second deadline before calling the LLM provider. "
         "When the provider proposes count_status_codes, McpLabClient strips all provider API keys from the child environment and invokes the MCP server over stdio. "
         "The MCP server validates UUIDs and invokes the Trusted Policy Runner, which checks the snapshot's SHA-256 digest on disk and spawns docker run with readonly snapshot mounting and networking disabled.",
@@ -905,7 +916,7 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
     _add_figure(
         doc,
         ASSETS / "mcp-sequence.png",
-        "Figure 3.1: UML Sequence Diagram of MCP Tool Execution (Agent Loop to Docker Worker, Rev 1)",
+        "Figure 3.1: UML 2.5.1 Sequence Diagram of MCP Tool Execution (Rev 1)",
         width_cm=15.6,
         verified_assets=verified_assets,
         bundle=export_data,
@@ -941,7 +952,7 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
     )
 
     # --- CHAPTER 4 ---
-    _add_heading(doc, "Chapter 4. EVALUATION", level=1)
+    _add_heading(doc, "Chapter 4. EVALUATION", level=1, centered=True, page_break_before=True)
     _body(
         doc,
         "Evaluation tests whether the implemented system answers log-count queries accurately across snapshot revisions while enforcing and accurately classifying Linux sandbox limits.",
@@ -1059,7 +1070,7 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
     )
 
     # --- CONCLUSION ---
-    _add_heading(doc, "CONCLUSION", level=1)
+    _add_heading(doc, "CONCLUSION", level=1, centered=True, page_break_before=True)
     _body(
         doc,
         "Returning to the question posed at the start—how an AI agent can count HTTP 404 responses in an Nginx log while Linux limits tool capabilities—Sandbox Lab resolves the problem by decoupling model reasoning from execution privilege. "
@@ -1072,7 +1083,7 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
     )
 
     # --- APPENDIX A ---
-    _add_heading(doc, "APPENDIX A: ENVIRONMENT, TEST INVENTORY & CONTRIBUTIONS", level=1)
+    _add_heading(doc, "APPENDIX A: ENVIRONMENT, TEST INVENTORY & CONTRIBUTIONS", level=1, centered=True, page_break_before=True)
     _add_table_caption(doc, "Table A.1: Verified Software Environment and Runtime Configuration")
     _add_table(
         doc,
@@ -1087,7 +1098,9 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
             [f"Source Fingerprint ({file_count} files)", f"{source_fp}"],
             ["VKU Format Standard", "A4 (21.0 × 29.7 cm); margins top/bottom/right 2 cm, left 3 cm; Times New Roman 13 pt body aligned with VKU guidelines [8]."],
         ],
-        [4.8, 11.2],
+        [4.5, 11.5],
+        font_pt=9,
+        pad_v=26,
     )
 
     _add_table_caption(doc, "Table A.2: Locked Open-Source Dependencies and Licenses")
@@ -1103,6 +1116,8 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
             ["pytest / Playwright", f"{versions.get('pytest', '?')} / {versions.get('playwright', '?')} · MIT / Apache-2.0", "Unit, integration, and browser E2E test suites"],
         ],
         [4.5, 4.8, 6.7],
+        font_pt=9,
+        pad_v=26,
     )
 
     _add_table_caption(doc, "Table A.3: Group Member Roles and Authored Modules")
@@ -1115,10 +1130,12 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
             ["Member C", "Operator Web UI, E2E Quality Assurance (QA) & Packaging", "web/src/*, tests/e2e/*, README.md, docs/*, scripts/build_release.py, scripts/release/*"],
         ],
         [3.0, 5.2, 7.8],
+        font_pt=9,
+        pad_v=26,
     )
 
     # --- REFERENCES (After Appendix A, alphabetically sorted per VKU general guidelines [8]) ---
-    _add_heading(doc, "REFERENCES", level=1)
+    _add_heading(doc, "REFERENCES", level=1, centered=True, page_break_before=True)
     refs = [
         "[1] Anthropic / Model Context Protocol, 'MCP Architecture Overview', 2025. https://modelcontextprotocol.io/docs/learn/architecture",
         "[2] Docker Inc., 'Bind Mounts (readonly option)', Docker Documentation. https://docs.docker.com/engine/storage/bind-mounts/",
