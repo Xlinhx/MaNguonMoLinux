@@ -201,7 +201,7 @@ def _add_page_number_footer(section) -> None:
 
 def _add_toc_table(doc: Document, toc_pages: dict[str, int] | None = None) -> None:
     toc_items: list[tuple[str, int, str]] = [
-        ("INSTRUCTOR COMMENTS", 1, "—"),
+        ("INSTRUCTOR'S COMMENTS", 1, "—"),
         ("LIST OF ABBREVIATIONS", 1, "—"),
         ("LIST OF FIGURES AND TABLES", 1, "—"),
         ("INTRODUCTION", 1, "—"),
@@ -454,67 +454,179 @@ def build_report(toc_pages: dict[str, int] | None = None) -> Path:
     sec.left_margin = Cm(3.0)
     sec.right_margin = Cm(2.0)
 
-    # --- COVER PAGE ---
-    def _center(txt: str, size: int, bold: bool = False, space_after: int = 6) -> None:
-        p = doc.add_paragraph()
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p.paragraph_format.space_after = Pt(space_after)
-        _format_run(p.add_run(txt), size_pt=size, bold=bold)
+    # --- COVER PAGE (Page 1: Official VKU KHMT framed cover) & INNER TITLE PAGE (Page 2: borderless inner cover) ---
+    def _build_cover_page(*, framed: bool) -> None:
+        outer = doc.add_table(rows=2, cols=1)
+        outer.alignment = WD_TABLE_ALIGNMENT.CENTER
+        _apply_col_widths(outer, [16.0])
+        tblPr = outer._tbl.tblPr
+        if framed:
+            tbl_borders = parse_xml(
+                f'<w:tblBorders {nsdecls("w")}>'
+                '<w:top w:val="double" w:sz="12" w:space="0" w:color="1F4E79"/>'
+                '<w:left w:val="double" w:sz="12" w:space="0" w:color="1F4E79"/>'
+                '<w:bottom w:val="double" w:sz="12" w:space="0" w:color="1F4E79"/>'
+                '<w:right w:val="double" w:sz="12" w:space="0" w:color="1F4E79"/>'
+                '<w:insideH w:val="none"/><w:insideV w:val="none"/>'
+                '</w:tblBorders>'
+            )
+        else:
+            tbl_borders = parse_xml(
+                f'<w:tblBorders {nsdecls("w")}>'
+                '<w:top w:val="none"/><w:left w:val="none"/><w:bottom w:val="none"/>'
+                '<w:right w:val="none"/><w:insideH w:val="none"/><w:insideV w:val="none"/>'
+                '</w:tblBorders>'
+            )
+        old_b = tblPr.find(qn("w:tblBorders"))
+        if old_b is not None:
+            tblPr.remove(old_b)
+        tblPr.append(tbl_borders)
 
-    _center("VIETNAM - KOREA UNIVERSITY OF INFORMATION AND", 13, bold=True, space_after=2)
-    _center("COMMUNICATION TECHNOLOGY (VKU)", 13, bold=True, space_after=4)
-    _center("FACULTY OF COMPUTER SCIENCE", 13, bold=True, space_after=42)
+        # Row 0 fills main vertical span; Row 1 pins date cleanly at bottom of frame
+        tr0 = outer.rows[0]._tr.get_or_add_trPr()
+        tr0.append(parse_xml(f'<w:cantSplit {nsdecls("w")}/>'))
+        tr0.append(parse_xml(f'<w:trHeight {nsdecls("w")} w:val="12750" w:hRule="exact"/>'))
+        tr1 = outer.rows[1]._tr.get_or_add_trPr()
+        tr1.append(parse_xml(f'<w:cantSplit {nsdecls("w")}/>'))
+        tr1.append(parse_xml(f'<w:trHeight {nsdecls("w")} w:val="900" w:hRule="exact"/>'))
 
-    _center("COURSE PROJECT REPORT", 18, bold=True, space_after=6)
-    _center("LINUX OPEN SOURCE SOFTWARE (LINUX OSS 2026)", 14, bold=True, space_after=32)
+        c_main = outer.rows[0].cells[0]
+        c_foot = outer.rows[1].cells[0]
+        _set_cell_margins(c_main, top=320, bottom=120, left=340, right=340)
+        _set_cell_margins(c_foot, top=40, bottom=240, left=340, right=340)
+        c_foot._tc.get_or_add_tcPr().append(parse_xml(f'<w:vAlign {nsdecls("w")} w:val="bottom"/>'))
 
-    _center("TOPIC 17:", 14, bold=True, space_after=4)
-    _center("SECURE AGENTIC AI TOOL EXECUTION", 16, bold=True, space_after=4)
-    _center("USING LINUX SANDBOX (SANDBOX LAB)", 16, bold=True, space_after=56)
+        def _c_para(container, txt: str, size: int, *, bold: bool = False, italic: bool = False, before: int = 0, after: int = 4, use_first: bool = False):
+            p = container.paragraphs[0] if use_first else container.add_paragraph()
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            p.paragraph_format.space_before = Pt(before)
+            p.paragraph_format.space_after = Pt(after)
+            _format_run(p.add_run(txt), size_pt=size, bold=bold, italic=italic)
+            return p
 
-    cover_table = doc.add_table(rows=3, cols=2)
-    cover_table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    cover_rows = [
-        (
-            "Group Members (3):",
-            "Member A — [Student Name, Student ID]\n"
-            "Member B — [Student Name, Student ID]\n"
-            "Member C — [Student Name, Student ID]",
-        ),
-        ("Class / Cohort:", "[Class Code]"),
-        ("Instructor:", "[Instructor Name]"),
-    ]
-    for idx, (k, v) in enumerate(cover_rows):
-        cover_table.rows[idx]._tr.get_or_add_trPr().append(parse_xml(f'<w:cantSplit {nsdecls("w")}/>'))
-        c0, c1 = cover_table.rows[idx].cells
-        _format_run(c0.paragraphs[0].add_run(k), size_pt=12, bold=True)
-        _format_run(c1.paragraphs[0].add_run(v), size_pt=12)
-        _set_cell_margins(c0, top=60, bottom=60, left=80, right=80)
-        _set_cell_margins(c1, top=60, bottom=60, left=80, right=80)
-    _apply_col_widths(cover_table, [4.6, 11.4])
+        _c_para(c_main, "THE UNIVERSITY OF DANANG", 12, bold=True, after=2, use_first=True)
+        _c_para(c_main, "VIETNAM - KOREA UNIVERSITY OF INFORMATION AND", 12, bold=True, after=2)
+        _c_para(c_main, "COMMUNICATION TECHNOLOGY (VKU)", 12, bold=True, after=4)
+        _c_para(c_main, "FACULTY OF COMPUTER SCIENCE", 13, bold=True, after=14)
 
-    p_gap = doc.add_paragraph()
-    p_gap.paragraph_format.space_after = Pt(64)
-    _center("Da Nang, November 2026", 13, bold=True, space_after=0)
+        vku_logo = ASSETS / "vku-logo.png"
+        if vku_logo.is_file():
+            p_logo = c_main.add_paragraph()
+            p_logo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            p_logo.paragraph_format.space_before = Pt(4)
+            p_logo.paragraph_format.space_after = Pt(24)
+            p_logo.add_run().add_picture(str(vku_logo), width=Cm(3.6))
+        else:
+            _c_para(c_main, "", 12, after=24)
+
+        _c_para(c_main, "COURSE PROJECT REPORT", 18, bold=True, after=6)
+        _c_para(c_main, "COURSE: LINUX OPEN SOURCE SOFTWARE (LINUX OSS 2026)", 13, bold=True, after=26)
+
+        _c_para(c_main, "TOPIC 17:", 13, bold=True, after=6)
+        _c_para(c_main, "SECURE AGENTIC AI TOOL EXECUTION", 16, bold=True, after=4)
+        _c_para(c_main, "USING LINUX SANDBOX (SANDBOX LAB)", 16, bold=True, after=46)
+
+        meta_tbl = c_main.add_table(rows=4, cols=2)
+        meta_tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
+        _apply_col_widths(meta_tbl, [3.6, 10.6])
+        m_tblPr = meta_tbl._tbl.tblPr
+        m_old = m_tblPr.find(qn("w:tblBorders"))
+        if m_old is not None:
+            m_tblPr.remove(m_old)
+        m_tblPr.append(
+            parse_xml(
+                f'<w:tblBorders {nsdecls("w")}>'
+                '<w:top w:val="none"/><w:left w:val="none"/><w:bottom w:val="none"/>'
+                '<w:right w:val="none"/><w:insideH w:val="none"/><w:insideV w:val="none"/>'
+                '</w:tblBorders>'
+            )
+        )
+        cover_rows = [
+            (
+                "Students:",
+                "Member A — [Full Name, Student ID]\n"
+                "Member B — [Full Name, Student ID]\n"
+                "Member C — [Full Name, Student ID]",
+            ),
+            ("Class:", "[Class Code]"),
+            ("Major:", "Computer Science"),
+            ("Instructor:", "[Academic Title, Full Name]"),
+        ]
+        for idx, (k, v) in enumerate(cover_rows):
+            meta_tbl.rows[idx]._tr.get_or_add_trPr().append(parse_xml(f'<w:cantSplit {nsdecls("w")}/>'))
+            mc0, mc1 = meta_tbl.rows[idx].cells
+            mc0.paragraphs[0].paragraph_format.space_after = Pt(2)
+            mc1.paragraphs[0].paragraph_format.space_after = Pt(2)
+            _format_run(mc0.paragraphs[0].add_run(k), size_pt=12, bold=True)
+            _format_run(mc1.paragraphs[0].add_run(v), size_pt=12, bold=(idx > 0))
+            _set_cell_margins(mc0, top=45, bottom=45, left=60, right=60)
+            _set_cell_margins(mc1, top=45, bottom=45, left=60, right=60)
+
+        _c_para(c_foot, "Da Nang, November 2026", 13, bold=True, italic=True, after=0, use_first=True)
+
+    _build_cover_page(framed=True)
     doc.add_page_break()
 
-    # --- INSTRUCTOR COMMENTS PAGE (VKU general layout [8]) ---
-    _add_heading(doc, "INSTRUCTOR COMMENTS", level=1, centered=True)
-    _body(doc, "Comments and grading evaluation by the course instructor:")
-    comment_box = doc.add_table(rows=1, cols=1)
-    comment_box.style = "Table Grid"
-    comment_box.alignment = WD_TABLE_ALIGNMENT.CENTER
-    comment_cell = comment_box.rows[0].cells[0]
-    comment_cell.width = Cm(15.8)
-    _set_cell_margins(comment_cell, top=180, bottom=180, left=140, right=140)
-    for _ in range(14):
-        p_blank = comment_cell.add_paragraph()
-        p_blank.paragraph_format.space_after = Pt(12)
-        _format_run(p_blank.add_run(" "), size_pt=12)
-    doc.add_paragraph()
+    _build_cover_page(framed=False)
+    doc.add_page_break()
+
+    # --- INSTRUCTOR'S COMMENTS PAGE (Official VKU dotted-line evaluation template) ---
+    for hdr_line, sz in (
+        ("THE UNIVERSITY OF DANANG", 11),
+        ("VIETNAM - KOREA UNIVERSITY OF INFORMATION AND COMMUNICATION TECHNOLOGY", 11),
+        ("FACULTY OF COMPUTER SCIENCE", 12),
+    ):
+        p_uh = doc.add_paragraph()
+        p_uh.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_uh.paragraph_format.space_after = Pt(2)
+        _format_run(p_uh.add_run(hdr_line), size_pt=sz, bold=True)
+
+    p_ic_title = doc.add_paragraph()
+    p_ic_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_ic_title.paragraph_format.space_before = Pt(14)
+    p_ic_title.paragraph_format.space_after = Pt(12)
+    _format_run(p_ic_title.add_run("INSTRUCTOR'S COMMENTS"), size_pt=16, bold=True)
+
+    for lbl, val in (
+        ("Project Title: ", "Secure Agentic AI Tool Execution Using Linux Sandbox (Topic 17)"),
+        ("Students: ", "Member A – [Full Name, ID]; Member B – [Full Name, ID]; Member C – [Full Name, ID]"),
+        ("Class: ", "[Class Code]     |     Course: Linux Open Source Software (Linux OSS 2026)"),
+    ):
+        p_m = doc.add_paragraph()
+        p_m.paragraph_format.space_after = Pt(4)
+        _format_run(p_m.add_run(lbl), size_pt=12, bold=True)
+        _format_run(p_m.add_run(val), size_pt=12)
+
+    dot_line = "." * 146
+    eval_sections = [
+        ("1. Work attitude, diligence, and progress during project execution:", 3),
+        ("2. Technical content, implementation quality, and experimental results:", 4),
+        ("3. Report structure, presentation, and academic formatting:", 3),
+        ("4. Strengths, limitations, and recommendations:", 3),
+    ]
+    for prompt_txt, n_lines in eval_sections:
+        p_q = doc.add_paragraph()
+        p_q.paragraph_format.space_before = Pt(8)
+        p_q.paragraph_format.space_after = Pt(4)
+        _format_run(p_q.add_run(prompt_txt), size_pt=12, bold=True)
+        for _ in range(n_lines):
+            p_d = doc.add_paragraph()
+            p_d.paragraph_format.space_before = Pt(2)
+            p_d.paragraph_format.space_after = Pt(4)
+            _format_run(p_d.add_run(dot_line), size_pt=12)
+
+    p_score = doc.add_paragraph()
+    p_score.paragraph_format.space_before = Pt(10)
+    p_score.paragraph_format.space_after = Pt(18)
+    _format_run(p_score.add_run("5. Score (10-pt scale): "), size_pt=12, bold=True)
+    _format_run(p_score.add_run(".......... / 10    |    Defense Eligibility:   [  ] Approved    [  ] Not Approved"), size_pt=12)
+
     p_sig = doc.add_paragraph()
     p_sig.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    _format_run(p_sig.add_run("Da Nang, ____ / ____ / 2026\nInstructor Signature"), size_pt=12, bold=True)
+    p_sig.paragraph_format.space_after = Pt(2)
+    _format_run(p_sig.add_run("Da Nang, ____ / ____ / 2026\n"), size_pt=12, italic=True)
+    _format_run(p_sig.add_run("INSTRUCTOR\n"), size_pt=12, bold=True)
+    _format_run(p_sig.add_run("(Signature and Full Name)"), size_pt=11, italic=True)
     doc.add_page_break()
 
     # --- TABLE OF CONTENTS ---
